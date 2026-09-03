@@ -318,6 +318,28 @@ export default function HomePage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+            {/* Goal 10: Persistent Alert Count Badge in Nav for Front Desk */}
+            {isFrontDesk && alertsData && alertsData.count > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  padding: "0.35rem 0.75rem",
+                  background: "rgba(244, 63, 94, 0.15)",
+                  border: "1px solid rgba(244, 63, 94, 0.4)",
+                  borderRadius: "var(--radius-full)",
+                  color: "var(--alert-red)",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  boxShadow: "0 0 10px rgba(244, 63, 94, 0.3)",
+                }}
+              >
+                <span>⚠️</span>
+                <span>{alertsData.count} Unconfirmed Alert{alertsData.count > 1 ? "s" : ""}</span>
+              </div>
+            )}
+
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>{session.user.name}</div>
               <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{session.user.email}</div>
@@ -2046,23 +2068,171 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Immutable Audit Timeline */}
+              {/* Goal 9: Unified Immutable Audit Timeline Per Appointment */}
               <div>
-                <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem" }}>
-                  Immutable Audit History Timeline
-                </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", borderLeft: "2px solid var(--brand-primary)", paddingLeft: "1rem" }}>
-                  {appointmentDetail.statusHistory.map((h) => (
-                    <div key={h.id} style={{ fontSize: "0.8rem" }}>
-                      <span style={{ color: "var(--text-muted)" }}>
-                        {format(new Date(h.changedAt), "MMM d, h:mm a")}
-                      </span>{" "}
-                      — <strong>{h.changedByUser.name}</strong> moved status from{" "}
-                      <code>{h.fromStatus || "START"}</code> to <code>{h.toStatus}</code>
-                      {h.reason && <span style={{ color: "var(--text-secondary)" }}> ({h.reason})</span>}
-                    </div>
-                  ))}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>
+                    Unified Audit Timeline (Immutable)
+                  </h3>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    🔒 Append-Only • No Edit / Delete
+                  </span>
                 </div>
+
+                {(() => {
+                  interface TimelineEvent {
+                    id: string;
+                    timestamp: Date;
+                    icon: string;
+                    title: string;
+                    actor?: string;
+                    details?: string | null;
+                    badgeText?: string;
+                    badgeClass?: string;
+                  }
+
+                  const events: TimelineEvent[] = [];
+
+                  // 1. Appointment Creation
+                  events.push({
+                    id: "creation",
+                    timestamp: new Date(appointmentDetail.createdAt),
+                    icon: "✨",
+                    title: "Appointment Created & Slot Booked",
+                    actor: "System / " + appointmentDetail.schedulingProvider.name,
+                    details: `Booked for ${appointmentDetail.patientName} (${appointmentDetail.patientContact}). Initial status: REQUESTED.`,
+                    badgeText: "CREATED",
+                    badgeClass: "badge-confirmed",
+                  });
+
+                  // 2. Status History changes
+                  appointmentDetail.statusHistory.forEach((h: any) => {
+                    const isCancel = h.toStatus === "CANCELLED";
+                    events.push({
+                      id: `sh-${h.id}`,
+                      timestamp: new Date(h.changedAt),
+                      icon: isCancel ? "❌" : "🔄",
+                      title: isCancel
+                        ? "Appointment Cancelled"
+                        : `Status Changed: ${h.fromStatus || "INITIAL"} → ${h.toStatus}`,
+                      actor: `${h.changedByUser.name} (${h.changedByUser.role})`,
+                      details: h.reason ? h.reason : `Transitioned status to ${h.toStatus}.`,
+                      badgeText: h.toStatus,
+                      badgeClass: `badge-${h.toStatus.toLowerCase()}`,
+                    });
+                  });
+
+                  // 3. Supporting Provider Assignments & Unassignments
+                  appointmentDetail.supportingProviders.forEach((sp: any) => {
+                    events.push({
+                      id: `sp-assign-${sp.id}`,
+                      timestamp: new Date(sp.assignedAt),
+                      icon: "🩺",
+                      title: `Care Team Assigned: ${sp.provider.name}`,
+                      actor: "Scheduling Provider / Front Desk",
+                      details: `${sp.provider.name} (${sp.provider.email}) assigned as supporting provider.`,
+                      badgeText: "CARE TEAM",
+                      badgeClass: "badge-checked_in",
+                    });
+
+                    if (sp.unassignedAt) {
+                      events.push({
+                        id: `sp-unassign-${sp.id}`,
+                        timestamp: new Date(sp.unassignedAt),
+                        icon: "👋",
+                        title: `Care Team Unassigned: ${sp.provider.name}`,
+                        actor: "Scheduling Provider / Front Desk",
+                        details: `${sp.provider.name} unassigned from supporting care team.`,
+                        badgeText: "REMOVED",
+                        badgeClass: "badge-cancelled",
+                      });
+                    }
+                  });
+
+                  // 4. Clinical Visit Notes
+                  appointmentDetail.visitNotes.forEach((note: any) => {
+                    events.push({
+                      id: `vn-${note.id}`,
+                      timestamp: new Date(note.createdAt),
+                      icon: "📝",
+                      title: `Clinical Note Logged by ${note.authorProvider.name}`,
+                      actor: note.authorProvider.name,
+                      details: note.content,
+                      badgeText: "VISIT NOTE",
+                      badgeClass: "badge-completed",
+                    });
+                  });
+
+                  // 5. Alert Dismissals
+                  appointmentDetail.alertDismissals?.forEach((d: any) => {
+                    events.push({
+                      id: `ad-${d.id}`,
+                      timestamp: new Date(d.dismissedAt),
+                      icon: "🔕",
+                      title: "Unconfirmed Alert Dismissed",
+                      actor: d.dismissedByUser.name,
+                      details: `Alert dismissed for scheduled start at ${format(new Date(d.dismissedForScheduledAt), "h:mm a")}. (Reappears within 1h).`,
+                      badgeText: "DISMISSED",
+                      badgeClass: "badge-requested",
+                    });
+                  });
+
+                  // Sort unified stream chronologically
+                  events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", borderLeft: "2px solid var(--brand-primary)", paddingLeft: "1.25rem", marginLeft: "0.5rem" }}>
+                      {events.map((evt) => (
+                        <div
+                          key={evt.id}
+                          style={{
+                            padding: "0.6rem 0.85rem",
+                            background: "rgba(255,255,255,0.02)",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--border-subtle)",
+                            position: "relative",
+                          }}
+                        >
+                          {/* Circle dot on border line */}
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "-1.62rem",
+                              top: "0.85rem",
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              background: "var(--brand-primary)",
+                              border: "2px solid var(--surface-card)",
+                            }}
+                          />
+
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.25rem" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <span>{evt.icon}</span>
+                              <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "#fff" }}>{evt.title}</span>
+                            </div>
+                            {evt.badgeText && (
+                              <span className={`badge ${evt.badgeClass}`} style={{ fontSize: "0.65rem", padding: "0.1rem 0.45rem" }}>
+                                {evt.badgeText}
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "0.3rem" }}>
+                            {format(evt.timestamp, "MMM d, yyyy h:mm:ss a")} • By: <strong>{evt.actor}</strong>
+                          </div>
+
+                          {evt.details && (
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", background: "rgba(0,0,0,0.25)", padding: "0.4rem 0.6rem", borderRadius: "var(--radius-sm)", whiteSpace: "pre-wrap" }}>
+                              {evt.details}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
