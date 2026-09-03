@@ -6,6 +6,18 @@ import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { format } from "date-fns";
 
+function getInitials(name: string): string {
+  if (!name) return "??";
+  return name
+    .replace(/^Dr\.\s+/i, "")
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
 export default function HomePage() {
   const { data: session, isLoading: sessionLoading } = trpc.auth.getSession.useQuery();
   const { data: providers } = trpc.auth.getProviders.useQuery(undefined, {
@@ -28,6 +40,7 @@ export default function HomePage() {
   const [cancellingAppt, setCancellingAppt] = useState<any | null>(null);
   const [cancellationReasonInput, setCancellationReasonInput] = useState("");
   const [cancelModalError, setCancelModalError] = useState<string | null>(null);
+  const [selectedNewSupportingProviderId, setSelectedNewSupportingProviderId] = useState("");
 
   // Filters for Schedule & Appointments
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -35,6 +48,10 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [filterProviderId, setFilterProviderId] = useState("");
   const [filterStatus, setFilterStatus] = useState<any>("");
+  const [startDateFilter, setStartDateFilter] = useState("");
+  const [endDateFilter, setEndDateFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"dateTime" | "status" | "provider">("dateTime");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
 
   // Queries
@@ -54,6 +71,10 @@ export default function HomePage() {
       search: search || undefined,
       providerId: filterProviderId || undefined,
       status: filterStatus || undefined,
+      startDate: startDateFilter || undefined,
+      endDate: endDateFilter || undefined,
+      sortBy,
+      sortOrder,
       page,
       pageSize: 8,
     },
@@ -180,6 +201,27 @@ export default function HomePage() {
       setNewNoteContent("");
       refetchDetail();
       setActionSuccess("Visit note appended.");
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const addSupportingProviderMutation = trpc.appointment.addSupportingProvider.useMutation({
+    onSuccess: () => {
+      refetchAppointments();
+      if (selectedAppointmentId) refetchDetail();
+      setSelectedNewSupportingProviderId("");
+      setActionSuccess("Supporting provider assigned to care team.");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const removeSupportingProviderMutation = trpc.appointment.removeSupportingProvider.useMutation({
+    onSuccess: () => {
+      refetchAppointments();
+      if (selectedAppointmentId) refetchDetail();
+      setActionSuccess("Supporting provider removed from care team.");
+      setActionError(null);
     },
     onError: (err) => setActionError(err.message),
   });
@@ -649,64 +691,156 @@ export default function HomePage() {
         {/* TAB 2: APPOINTMENTS DIRECTORY */}
         {activeTab === "appointments" && (
           <section className="glass-card" style={{ padding: "1.5rem" }}>
-            <div style={{ display: "grid", gridTemplateColumns: isFrontDesk ? "2fr 1fr 1fr" : "2fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Search patient name..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-              />
+            {/* Search & Filter Bar */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: isFrontDesk ? "2fr 1fr 1fr" : "2fr 1fr", gap: "1rem" }}>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="🔍 Search patient name (global search)..."
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
 
-              {isFrontDesk && (
+                {isFrontDesk && (
+                  <select
+                    className="select-field"
+                    value={filterProviderId}
+                    onChange={(e) => {
+                      setFilterProviderId(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">All Providers</option>
+                    {providers?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <select
                   className="select-field"
-                  value={filterProviderId}
+                  value={filterStatus}
                   onChange={(e) => {
-                    setFilterProviderId(e.target.value);
+                    setFilterStatus(e.target.value);
                     setPage(1);
                   }}
                 >
-                  <option value="">All Providers</option>
-                  {providers?.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
+                  <option value="">All Statuses</option>
+                  <option value="REQUESTED">Requested</option>
+                  <option value="CONFIRMED">Confirmed</option>
+                  <option value="CHECKED_IN">Checked In</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="NO_SHOW">No Show</option>
+                  <option value="CANCELLED">Cancelled</option>
                 </select>
-              )}
+              </div>
 
-              <select
-                className="select-field"
-                value={filterStatus}
-                onChange={(e) => {
-                  setFilterStatus(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="">All Statuses</option>
-                <option value="REQUESTED">Requested</option>
-                <option value="CONFIRMED">Confirmed</option>
-                <option value="CHECKED_IN">Checked In</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="NO_SHOW">No Show</option>
-                <option value="CANCELLED">Cancelled</option>
-              </select>
+              {/* Date-Range Filter & Reset Row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", padding: "0.75rem 1rem", background: "rgba(255,255,255,0.02)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600 }}>Date Range:</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>From</span>
+                    <input
+                      type="date"
+                      className="input-field"
+                      style={{ padding: "0.35rem 0.6rem", fontSize: "0.8rem", width: "auto" }}
+                      value={startDateFilter}
+                      onChange={(e) => {
+                        setStartDateFilter(e.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>To</span>
+                    <input
+                      type="date"
+                      className="input-field"
+                      style={{ padding: "0.35rem 0.6rem", fontSize: "0.8rem", width: "auto" }}
+                      value={endDateFilter}
+                      onChange={(e) => {
+                        setEndDateFilter(e.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {(search || filterProviderId || filterStatus || startDateFilter || endDateFilter) && (
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setFilterProviderId("");
+                      setFilterStatus("");
+                      setStartDateFilter("");
+                      setEndDateFilter("");
+                      setPage(1);
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    Clear All Filters
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Appointments Table */}
+            {/* Appointments Table with Sortable Columns */}
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
                     <th>Patient</th>
-                    <th>Date & Time</th>
-                    <th>Scheduling Provider</th>
-                    <th>Status</th>
-                    <th>Care Team</th>
+                    <th
+                      onClick={() => {
+                        if (sortBy === "dateTime") {
+                          setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortBy("dateTime");
+                          setSortOrder("asc");
+                        }
+                      }}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                      title="Click to toggle date/time sorting"
+                    >
+                      Date & Time {sortBy === "dateTime" ? (sortOrder === "asc" ? "▲" : "▼") : "⬍"}
+                    </th>
+                    <th
+                      onClick={() => {
+                        if (sortBy === "provider") {
+                          setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortBy("provider");
+                          setSortOrder("asc");
+                        }
+                      }}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                      title="Click to toggle provider sorting"
+                    >
+                      Scheduling Provider {sortBy === "provider" ? (sortOrder === "asc" ? "▲" : "▼") : "⬍"}
+                    </th>
+                    <th
+                      onClick={() => {
+                        if (sortBy === "status") {
+                          setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortBy("status");
+                          setSortOrder("asc");
+                        }
+                      }}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                      title="Click to toggle status sorting"
+                    >
+                      Status {sortBy === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "⬍"}
+                    </th>
+                    <th>Care Team (Supporting)</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -731,30 +865,56 @@ export default function HomePage() {
                           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{app.patientContact}</div>
                         </td>
                         <td>
-                          <div>{format(new Date(app.slot.date), "EEE, MMM d, yyyy")}</div>
-                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{app.slot.startTime} ({app.slot.durationMinutes}m)</div>
+                          <div style={{ fontWeight: 500 }}>{format(new Date(app.slot.date), "EEE, MMM d, yyyy")}</div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            {app.slot.startTime} ({app.slot.durationMinutes}m)
+                          </div>
                         </td>
                         <td>
-                          <div>{app.schedulingProvider.name}</div>
-                          {isProvider && app.schedulingProviderId === session.user.id && (
-                            <span style={{ fontSize: "0.65rem", color: "var(--brand-primary-light)", fontWeight: 700 }}>
-                              (Primary)
-                            </span>
-                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                            <div className="avatar-circle avatar-primary" title={`Scheduling Provider: ${app.schedulingProvider.name}`}>
+                              {getInitials(app.schedulingProvider.name)}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{app.schedulingProvider.name}</div>
+                              {isProvider && app.schedulingProviderId === session.user.id && (
+                                <span style={{ fontSize: "0.65rem", color: "var(--brand-primary-light)", fontWeight: 700 }}>
+                                  (Primary)
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td>
+                          {/* Status Color Chips */}
                           <span className={`badge badge-${app.status.toLowerCase()}`}>
                             <span className="badge-dot" />
                             {app.status.replace("_", " ")}
                           </span>
                         </td>
                         <td>
+                          {/* Care Team: Supporting Providers Avatars and Stack */}
                           {app.supportingProviders.length > 0 ? (
-                            <span style={{ fontSize: "0.8rem", color: "var(--brand-primary-light)" }}>
-                              +{app.supportingProviders.length} supporting
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div className="avatar-stack">
+                                {app.supportingProviders.map((sp: any) => (
+                                  <div
+                                    key={sp.id}
+                                    className="avatar-circle avatar-supporting"
+                                    title={`Supporting Provider: ${sp.provider.name}`}
+                                  >
+                                    {getInitials(sp.provider.name)}
+                                  </div>
+                                ))}
+                              </div>
+                              <span style={{ fontSize: "0.75rem", color: "var(--brand-secondary)", fontWeight: 600 }}>
+                                +{app.supportingProviders.length} supporting
+                              </span>
+                            </div>
                           ) : (
-                            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Solo</span>
+                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "0.2rem 0.5rem", background: "rgba(255,255,255,0.03)", borderRadius: "var(--radius-sm)" }}>
+                              Solo Provider
+                            </span>
                           )}
                         </td>
                         <td>
@@ -780,11 +940,11 @@ export default function HomePage() {
               </table>
             </div>
 
-            {/* Pagination */}
+            {/* Prisma-Level Server Pagination */}
             {appointmentsData && appointmentsData.totalPages > 1 && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px solid var(--border-subtle)" }}>
                 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  Showing page {appointmentsData.page} of {appointmentsData.totalPages} ({appointmentsData.totalCount} total)
+                  Showing page {appointmentsData.page} of {appointmentsData.totalPages} ({appointmentsData.totalCount} total appointments)
                 </span>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
@@ -1579,6 +1739,119 @@ export default function HomePage() {
                     );
                   })()}
                 </div>
+              </div>
+
+              {/* Care Team & Supporting Providers (SupportingProviderAssignment add/remove) */}
+              <div style={{ marginBottom: "1.5rem", padding: "1.1rem", background: "rgba(255,255,255,0.02)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>Care Team & Providers</h3>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    {appointmentDetail.supportingProviders.length + 1} clinician{appointmentDetail.supportingProviders.length > 0 ? "s" : ""} assigned
+                  </span>
+                </div>
+
+                {/* Primary Scheduling Provider */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0.75rem", background: "rgba(99,102,241,0.08)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(99,102,241,0.2)", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                    <div className="avatar-circle avatar-primary">
+                      {getInitials(appointmentDetail.schedulingProvider.name)}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{appointmentDetail.schedulingProvider.name}</div>
+                      <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{appointmentDetail.schedulingProvider.email}</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--brand-primary-light)", padding: "0.15rem 0.5rem", background: "rgba(99,102,241,0.15)", borderRadius: "var(--radius-full)" }}>
+                    Lead / Scheduling Provider
+                  </span>
+                </div>
+
+                {/* Supporting Providers List */}
+                {appointmentDetail.supportingProviders.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "0.75rem" }}>
+                    {appointmentDetail.supportingProviders.map((sp: any) => (
+                      <div
+                        key={sp.id}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.75rem", background: "rgba(255,255,255,0.02)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                          <div className="avatar-circle avatar-supporting">
+                            {getInitials(sp.provider.name)}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "0.825rem", fontWeight: 500 }}>{sp.provider.name}</div>
+                            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{sp.provider.email}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{ fontSize: "0.7rem", color: "var(--brand-secondary)", fontWeight: 600 }}>
+                            Supporting Provider
+                          </span>
+                          {(isFrontDesk || appointmentDetail.schedulingProviderId === session?.user?.id) && (
+                            <button
+                              type="button"
+                              onClick={() => removeSupportingProviderMutation.mutate({ assignmentId: sp.id })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ color: "var(--alert-red)", padding: "0.2rem 0.5rem", fontSize: "0.75rem" }}
+                              disabled={removeSupportingProviderMutation.isLoading}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem", fontStyle: "italic" }}>
+                    No supporting providers assigned yet.
+                  </div>
+                )}
+
+                {/* Add Supporting Provider Controls (Front Desk or Scheduling Provider Only) */}
+                {(isFrontDesk || appointmentDetail.schedulingProviderId === session?.user?.id) ? (
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", alignItems: "center" }}>
+                    <select
+                      className="select-field"
+                      style={{ fontSize: "0.8rem", padding: "0.4rem 0.6rem" }}
+                      value={selectedNewSupportingProviderId}
+                      onChange={(e) => setSelectedNewSupportingProviderId(e.target.value)}
+                    >
+                      <option value="">+ Assign Supporting Provider...</option>
+                      {providers
+                        ?.filter(
+                          (p) =>
+                            p.id !== appointmentDetail.schedulingProviderId &&
+                            !appointmentDetail.supportingProviders.some((sp: any) => sp.providerId === p.id)
+                        )
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedNewSupportingProviderId) {
+                          addSupportingProviderMutation.mutate({
+                            appointmentId: appointmentDetail.id,
+                            providerId: selectedNewSupportingProviderId,
+                          });
+                        }
+                      }}
+                      className="btn btn-primary btn-sm"
+                      disabled={!selectedNewSupportingProviderId || addSupportingProviderMutation.isLoading}
+                    >
+                      {addSupportingProviderMutation.isLoading ? "Adding..." : "Add to Care Team"}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                    Care team management is restricted to Front Desk staff and the Primary Scheduling Provider.
+                  </div>
+                )}
               </div>
 
               {/* Visit Notes */}

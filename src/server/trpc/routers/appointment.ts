@@ -87,13 +87,20 @@ export const appointmentRouter = router({
       }
 
       // Sorting logic
-      let orderBy: Prisma.AppointmentOrderByWithRelationInput = {};
+      let orderBy: Prisma.AppointmentOrderByWithRelationInput | Prisma.AppointmentOrderByWithRelationInput[] = {};
       if (input.sortBy === "dateTime") {
-        orderBy = {
-          slot: {
-            date: input.sortOrder,
+        orderBy = [
+          {
+            slot: {
+              date: input.sortOrder,
+            },
           },
-        };
+          {
+            slot: {
+              startTime: input.sortOrder,
+            },
+          },
+        ];
       } else if (input.sortBy === "status") {
         orderBy = { status: input.sortOrder };
       } else if (input.sortBy === "provider") {
@@ -568,7 +575,7 @@ export const appointmentRouter = router({
       });
     }),
 
-  assignSupportingProvider: protectedProcedure
+  addSupportingProvider: protectedProcedure
     .input(
       z.object({
         appointmentId: z.string(),
@@ -585,10 +592,34 @@ export const appointmentRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Appointment not found." });
       }
 
-      if (user.role === "PROVIDER" && appointment.schedulingProviderId !== user.id) {
+      // Rule: FRONT_DESK or scheduling provider only
+      const isFrontDesk = user.role === "FRONT_DESK";
+      const isSchedulingProvider = appointment.schedulingProviderId === user.id;
+
+      if (!isFrontDesk && !isSchedulingProvider) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Only the scheduling provider or front desk can manage the care team.",
+          message:
+            "Access restricted: Only Front Desk staff or the primary scheduling provider can add supporting providers to the care team.",
+        });
+      }
+
+      // Cannot add the scheduling provider as their own supporting provider
+      if (appointment.schedulingProviderId === input.providerId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This provider is already the primary scheduling provider for this appointment.",
+        });
+      }
+
+      const targetProvider = await ctx.prisma.user.findUnique({
+        where: { id: input.providerId },
+      });
+
+      if (!targetProvider || targetProvider.role !== "PROVIDER") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Selected user is not a valid clinical provider.",
         });
       }
 
@@ -604,16 +635,146 @@ export const appointmentRouter = router({
       if (existing) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "This provider is already assigned as a supporting provider.",
+          message: `${targetProvider.name} is already an active supporting provider on this appointment.`,
         });
       }
 
-      return ctx.prisma.supportingProviderAssignment.create({
-        data: {
-          appointmentId: input.appointmentId,
-          providerId: input.providerId,
-          assignedAt: new Date(),
+      return ctx.prisma.$transaction(async (tx) => {
+        const assignment = await tx.supportingProviderAssignment.create({
+          data: {
+            appointmentId: input.appointmentId,
+            providerId: input.providerId,
+            assignedAt: new Date(),
+          },
+          include: {
+            provider: { select: { id: true, name: true, email: true } },
+          },
+        });
+
+        await tx.statusHistory.create({
+          data: {
+            appointmentId: input.appointmentId,
+            fromStatus: appointment.status,
+            toStatus: appointment.status,
+            changedByUserId: user.id,
+            reason: `Assigned supporting provider ${targetProvider.name} to care team.`,
+          },
+        });
+
+        return assignment;
+      });
+    }),
+
+  assignSupportingProvider: protectedProcedure
+    .input(
+      z.object({
+        appointmentId: z.string(),
+        providerId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Alias to addSupportingProvider
+      const user = ctx.session.user;
+      const appointment = await ctx.prisma.appointment.findUnique({
+        where: { id: input.appointmentId },
+      });
+      if (!appointment) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Appointment not found." });
+      }
+      const isFrontDesk = user.role === "FRONT_DESK";
+      const isSchedulingProvider = appointment.schedulingProviderId === user.id;
+      if (!isFrontDesk && !isSchedulingProvider) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Access restricted: Only Front Desk staff or the primary scheduling provider can add supporting providers.",
+        });
+      }
+      if (appointment.schedulingProviderId === input.providerId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This provider is already the primary scheduling provider for this appointment.",
+        });
+      }
+      const targetProvider = await ctx.prisma.user.findUnique({
+        where: { id: input.providerId },
+      });
+      if (!targetProvider || targetProvider.role !== "PROVIDER") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid provider." });
+      }
+      const existing = await ctx.prisma.supportingProviderAssignment.findFirst({
+        where: { appointmentId: input.appointmentId, providerId: input.providerId, unassignedAt: null },
+      });
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: "Provider is already assigned." });
+      }
+      return ctx.prisma.$transaction(async (tx) => {
+        const assignment = await tx.supportingProviderAssignment.create({
+          data: { appointmentId: input.appointmentId, providerId: input.providerId, assignedAt: new Date() },
+          include: { provider: { select: { id: true, name: true, email: true } } },
+        });
+        await tx.statusHistory.create({
+          data: {
+            appointmentId: input.appointmentId,
+            fromStatus: appointment.status,
+            toStatus: appointment.status,
+            changedByUserId: user.id,
+            reason: `Assigned supporting provider ${targetProvider.name} to care team.`,
+          },
+        });
+        return assignment;
+      });
+    }),
+
+  removeSupportingProvider: protectedProcedure
+    .input(
+      z.object({
+        assignmentId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const assignment = await ctx.prisma.supportingProviderAssignment.findUnique({
+        where: { id: input.assignmentId },
+        include: {
+          appointment: true,
+          provider: true,
         },
+      });
+
+      if (!assignment) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assignment record not found." });
+      }
+
+      const user = ctx.session.user;
+      const isFrontDesk = user.role === "FRONT_DESK";
+      const isSchedulingProvider = assignment.appointment.schedulingProviderId === user.id;
+
+      if (!isFrontDesk && !isSchedulingProvider) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Access restricted: Only Front Desk staff or the primary scheduling provider can remove supporting providers from the care team.",
+        });
+      }
+
+      return ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.supportingProviderAssignment.update({
+          where: { id: input.assignmentId },
+          data: {
+            unassignedAt: new Date(),
+          },
+        });
+
+        await tx.statusHistory.create({
+          data: {
+            appointmentId: assignment.appointmentId,
+            fromStatus: assignment.appointment.status,
+            toStatus: assignment.appointment.status,
+            changedByUserId: user.id,
+            reason: `Removed supporting provider ${assignment.provider.name} from care team.`,
+          },
+        });
+
+        return updated;
       });
     }),
 
@@ -624,29 +785,38 @@ export const appointmentRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Alias to removeSupportingProvider
       const assignment = await ctx.prisma.supportingProviderAssignment.findUnique({
         where: { id: input.assignmentId },
-        include: { appointment: true },
+        include: { appointment: true, provider: true },
       });
-
       if (!assignment) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Assignment not found." });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assignment record not found." });
       }
-
       const user = ctx.session.user;
-      if (user.role === "PROVIDER" && assignment.appointment.schedulingProviderId !== user.id) {
+      const isFrontDesk = user.role === "FRONT_DESK";
+      const isSchedulingProvider = assignment.appointment.schedulingProviderId === user.id;
+      if (!isFrontDesk && !isSchedulingProvider) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Only the scheduling provider or front desk can unassign team members.",
+          message: "Access restricted: Only Front Desk staff or the primary scheduling provider can remove supporting providers.",
         });
       }
-
-      // Immutable history: soft-unassign by stamping unassignedAt
-      return ctx.prisma.supportingProviderAssignment.update({
-        where: { id: input.assignmentId },
-        data: {
-          unassignedAt: new Date(),
-        },
+      return ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.supportingProviderAssignment.update({
+          where: { id: input.assignmentId },
+          data: { unassignedAt: new Date() },
+        });
+        await tx.statusHistory.create({
+          data: {
+            appointmentId: assignment.appointmentId,
+            fromStatus: assignment.appointment.status,
+            toStatus: assignment.appointment.status,
+            changedByUserId: user.id,
+            reason: `Removed supporting provider ${assignment.provider.name} from care team.`,
+          },
+        });
+        return updated;
       });
     }),
 });
