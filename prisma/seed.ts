@@ -109,9 +109,17 @@ async function main() {
     supportingProviders?: Array<typeof provider1>;
     dismissedEarlier?: boolean;
   }) {
-    // 1. Create Slot
-    const slot = await prisma.slot.create({
-      data: {
+    // 1. Create or reuse Slot
+    const slot = await prisma.slot.upsert({
+      where: {
+        providerId_date_startTime: {
+          providerId: provider.id,
+          date,
+          startTime,
+        },
+      },
+      update: {},
+      create: {
         providerId: provider.id,
         date,
         startTime,
@@ -424,31 +432,55 @@ async function main() {
   // G. Create unbooked ACTIVE and ARCHIVED slots (for testing slot management & restore)
   const tomorrowDate = new Date(format(addDays(now, 1), "yyyy-MM-dd"));
 
-  await prisma.slot.create({
-    data: {
+  await prisma.slot.upsert({
+    where: {
+      providerId_date_startTime: {
+        providerId: provider1.id,
+        date: tomorrowDate,
+        startTime: "18:00",
+      },
+    },
+    update: {},
+    create: {
       providerId: provider1.id,
       date: tomorrowDate,
-      startTime: "16:00",
+      startTime: "18:00",
       durationMinutes: 30,
       status: SlotStatus.ACTIVE,
     },
   });
 
-  await prisma.slot.create({
-    data: {
+  await prisma.slot.upsert({
+    where: {
+      providerId_date_startTime: {
+        providerId: provider2.id,
+        date: tomorrowDate,
+        startTime: "18:30",
+      },
+    },
+    update: {},
+    create: {
       providerId: provider2.id,
       date: tomorrowDate,
-      startTime: "16:30",
+      startTime: "18:30",
       durationMinutes: 30,
       status: SlotStatus.ACTIVE,
     },
   });
 
-  await prisma.slot.create({
-    data: {
+  await prisma.slot.upsert({
+    where: {
+      providerId_date_startTime: {
+        providerId: provider3.id,
+        date: tomorrowDate,
+        startTime: "19:00",
+      },
+    },
+    update: {},
+    create: {
       providerId: provider3.id,
       date: tomorrowDate,
-      startTime: "17:00",
+      startTime: "19:00",
       durationMinutes: 30,
       status: SlotStatus.ARCHIVED, // archived slot for restore testing
     },
