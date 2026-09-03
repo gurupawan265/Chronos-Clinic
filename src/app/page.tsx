@@ -230,6 +230,8 @@ export default function HomePage() {
   const [bulkProviderId, setBulkProviderId] = useState("");
   const [bulkStartDate, setBulkStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [bulkEndDate, setBulkEndDate] = useState(format(new Date(Date.now() + 14 * 86400000), "yyyy-MM-dd"));
+  const [bulkStartTime, setBulkStartTime] = useState("09:00");
+  const [bulkDuration, setBulkDuration] = useState(30);
   const [bulkDays, setBulkDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [bulkResult, setBulkResult] = useState<any>(null);
 
@@ -238,6 +240,23 @@ export default function HomePage() {
       setBulkResult(data);
       refetchSlots();
       setActionSuccess(`Bulk generation completed: ${data.createdCount} created, ${data.skippedCount} skipped.`);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const exportCsvMutation = trpc.slot.exportDayScheduleCsv.useMutation({
+    onSuccess: (data) => {
+      const blob = new Blob([data.csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", data.filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setActionSuccess(`Exported ${data.totalRows} schedule records to ${data.filename}.`);
+      setActionError(null);
     },
     onError: (err) => setActionError(err.message),
   });
@@ -475,14 +494,12 @@ export default function HomePage() {
             >
               📋 Appointments Directory
             </button>
-            {isFrontDesk && (
-              <button
-                onClick={() => setActiveTab("bulk")}
-                className={`btn btn-sm ${activeTab === "bulk" ? "btn-primary" : "btn-secondary"}`}
-              >
-                ⚡ Bulk Availability Generator
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab("bulk")}
+              className={`btn btn-sm ${activeTab === "bulk" ? "btn-primary" : "btn-secondary"}`}
+            >
+              ⚡ Generate Availability
+            </button>
             <button
               onClick={() => setActiveTab("analytics")}
               className={`btn btn-sm ${activeTab === "analytics" ? "btn-primary" : "btn-secondary"}`}
@@ -518,8 +535,8 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Schedule Filters */}
-              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+              {/* Schedule Filters & Day CSV Export */}
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   type="date"
                   className="input-field"
@@ -543,6 +560,21 @@ export default function HomePage() {
                     ))}
                   </select>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportCsvMutation.mutate({
+                      date: selectedScheduleDate,
+                      providerId: scheduleProviderFilter || undefined,
+                    });
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  disabled={exportCsvMutation.isLoading}
+                  title={`Download single day CSV schedule for ${selectedScheduleDate}`}
+                >
+                  {exportCsvMutation.isLoading ? "Exporting..." : "📥 Export Day CSV"}
+                </button>
 
                 <button
                   onClick={() => refetchSlots()}
@@ -967,55 +999,66 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* TAB 3: Bulk Availability Generation (Goal 7) */}
-        {activeTab === "bulk" && isFrontDesk && (
-          <section className="glass-card" style={{ padding: "1.75rem", maxWidth: "700px" }}>
+        {/* TAB 3: Generate Availability (Goal 7) */}
+        {activeTab === "bulk" && (
+          <section className="glass-card" style={{ padding: "1.75rem", maxWidth: "780px" }}>
             <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-              Bulk Recurring Availability Generator
+              Generate Recurring Availability
             </h2>
             <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
-              Generate recurring weekly availability blocks across a date range. Collisions with existing slots or appointments will be skipped and reported.
+              Define a weekly recurrence pattern (days of the week, start time, duration) across a date range. Collisions with existing slots or booked appointments will be automatically skipped and reported with detailed reasons.
             </p>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                const targetProviderId = isProvider ? session.user.id : bulkProviderId;
+                if (!targetProviderId) return;
+
                 bulkMutation.mutate({
-                  providerId: bulkProviderId,
+                  providerId: targetProviderId,
                   startDate: bulkStartDate,
                   endDate: bulkEndDate,
                   daysOfWeek: bulkDays,
-                  timeBlocks: [
-                    { startTime: "09:00", durationMinutes: 30 },
-                    { startTime: "10:00", durationMinutes: 30 },
-                    { startTime: "11:00", durationMinutes: 30 },
-                    { startTime: "14:00", durationMinutes: 30 },
-                    { startTime: "15:00", durationMinutes: 30 },
-                  ],
+                  startTime: bulkStartTime,
+                  durationMinutes: Number(bulkDuration) || 30,
                 });
               }}
-              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}
             >
-              <div>
-                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Provider</label>
-                <select
-                  className="select-field"
-                  value={bulkProviderId}
-                  onChange={(e) => setBulkProviderId(e.target.value)}
-                  required
-                >
-                  <option value="">Select Provider...</option>
-                  {providers?.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Provider Selection */}
+              {isFrontDesk ? (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    Clinical Provider <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
+                  <select
+                    className="select-field"
+                    value={bulkProviderId}
+                    onChange={(e) => setBulkProviderId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select Provider...</option>
+                    {providers?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div style={{ padding: "0.6rem 0.85rem", background: "rgba(99,102,241,0.08)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(99,102,241,0.2)" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Generating availability for: </span>
+                  <strong style={{ fontSize: "0.85rem", color: "var(--brand-primary-light)" }}>{session?.user?.name} (You)</strong>
+                </div>
+              )}
 
+              {/* Date Range */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Start Date</label>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    Start Date <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
                   <input
                     type="date"
                     className="input-field"
@@ -1025,7 +1068,9 @@ export default function HomePage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>End Date</label>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    End Date <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
                   <input
                     type="date"
                     className="input-field"
@@ -1036,52 +1081,158 @@ export default function HomePage() {
                 </div>
               </div>
 
+              {/* Day-of-Week Checkboxes */}
               <div>
-                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Days of the Week</label>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  Recurring Days of Week <span style={{ color: "var(--alert-red)" }}>*</span>
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                   {[
                     { label: "Mon", val: 1 },
                     { label: "Tue", val: 2 },
                     { label: "Wed", val: 3 },
                     { label: "Thu", val: 4 },
                     { label: "Fri", val: 5 },
-                  ].map((d) => (
-                    <button
-                      key={d.val}
-                      type="button"
-                      onClick={() => {
-                        setBulkDays((prev) =>
-                          prev.includes(d.val) ? prev.filter((x) => x !== d.val) : [...prev, d.val]
-                        );
-                      }}
-                      className={`btn btn-sm ${bulkDays.includes(d.val) ? "btn-primary" : "btn-secondary"}`}
-                    >
-                      {d.label}
-                    </button>
-                  ))}
+                    { label: "Sat", val: 6 },
+                    { label: "Sun", val: 0 },
+                  ].map((d) => {
+                    const isChecked = bulkDays.includes(d.val);
+                    return (
+                      <button
+                        key={d.val}
+                        type="button"
+                        onClick={() => {
+                          setBulkDays((prev) =>
+                            prev.includes(d.val) ? prev.filter((x) => x !== d.val) : [...prev, d.val]
+                          );
+                        }}
+                        className={`btn btn-sm ${isChecked ? "btn-primary" : "btn-secondary"}`}
+                        style={{ minWidth: "3rem" }}
+                      >
+                        {isChecked ? `✓ ${d.label}` : d.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {bulkDays.length === 0 && (
+                  <p style={{ color: "var(--alert-red)", fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                    Please select at least one day of the week.
+                  </p>
+                )}
+              </div>
+
+              {/* Time and Duration */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    Slot Start Time <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={bulkStartTime}
+                    onChange={(e) => setBulkStartTime(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    Duration (Minutes) <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    step={5}
+                    className="input-field"
+                    value={bulkDuration}
+                    onChange={(e) => setBulkDuration(Number(e.target.value))}
+                    required
+                  />
                 </div>
               </div>
 
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={bulkMutation.isLoading || !bulkProviderId}
+                disabled={bulkMutation.isLoading || (isFrontDesk && !bulkProviderId) || bulkDays.length === 0}
                 style={{ marginTop: "0.5rem" }}
               >
-                {bulkMutation.isLoading ? "Generating..." : "Generate Availability Slots"}
+                {bulkMutation.isLoading ? "Generating Availability Slots..." : "⚡ Generate Availability Slots"}
               </button>
             </form>
 
-            {/* Bulk Result Report */}
+            {/* Results Summary after run */}
             {bulkResult && (
-              <div style={{ marginTop: "1.5rem", padding: "1rem", background: "rgba(0,0,0,0.3)", borderRadius: "var(--radius-sm)" }}>
-                <h4 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.5rem" }}>Generation Report</h4>
-                <p style={{ fontSize: "0.875rem", color: "var(--status-checkedin)" }}>
-                  ✓ Created: {bulkResult.createdCount} slots
-                </p>
-                <p style={{ fontSize: "0.875rem", color: "var(--status-requested)" }}>
-                  ⚠️ Skipped (Collisions): {bulkResult.skippedCount} slots
-                </p>
+              <div style={{ marginTop: "1.75rem", padding: "1.25rem", background: "rgba(0,0,0,0.35)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>Generation Run Results</h4>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <span style={{ fontSize: "0.8rem", color: "var(--status-checkedin)", fontWeight: 700, padding: "0.15rem 0.6rem", background: "rgba(16,185,129,0.15)", borderRadius: "var(--radius-full)" }}>
+                      ✓ {bulkResult.createdCount} Created
+                    </span>
+                    <span style={{ fontSize: "0.8rem", color: "var(--status-requested)", fontWeight: 700, padding: "0.15rem 0.6rem", background: "rgba(245,158,11,0.15)", borderRadius: "var(--radius-full)" }}>
+                      ⚠️ {bulkResult.skippedCount} Skipped
+                    </span>
+                  </div>
+                </div>
+
+                {/* Skipped Items Details */}
+                {bulkResult.skipped && bulkResult.skipped.length > 0 ? (
+                  <div style={{ marginTop: "1rem" }}>
+                    <h5 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--status-requested)", marginBottom: "0.5rem" }}>
+                      Skipped Slots ({bulkResult.skipped.length} collisions detected):
+                    </h5>
+                    <div style={{ maxHeight: "220px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      {bulkResult.skipped.map((s: any, idx: number) => (
+                        <div
+                          key={idx}
+                          style={{
+                            fontSize: "0.8rem",
+                            padding: "0.5rem 0.75rem",
+                            background: "rgba(245, 158, 11, 0.08)",
+                            border: "1px solid rgba(245, 158, 11, 0.25)",
+                            borderRadius: "var(--radius-sm)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <strong>{s.date}</strong> at <strong>{s.startTime}</strong>
+                          </div>
+                          <div style={{ color: "var(--status-requested)", fontSize: "0.75rem", textAlign: "right" }}>
+                            {s.reason}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "0.85rem", color: "var(--status-checkedin)", marginTop: "0.5rem" }}>
+                    Zero collisions encountered. All slots generated smoothly.
+                  </p>
+                )}
+
+                {/* Created Items Preview */}
+                {bulkResult.created && bulkResult.created.length > 0 && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <h5 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--status-checkedin)", marginBottom: "0.5rem" }}>
+                      Created Slots ({bulkResult.created.length}):
+                    </h5>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", fontSize: "0.75rem" }}>
+                      {bulkResult.created.slice(0, 12).map((c: any, idx: number) => (
+                        <span key={idx} style={{ padding: "0.2rem 0.5rem", background: "rgba(16,185,129,0.1)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(16,185,129,0.25)", color: "var(--status-checkedin)" }}>
+                          {c.date} {c.startTime}
+                        </span>
+                      ))}
+                      {bulkResult.created.length > 12 && (
+                        <span style={{ padding: "0.2rem 0.5rem", color: "var(--text-muted)", alignSelf: "center" }}>
+                          +{bulkResult.created.length - 12} more...
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </section>

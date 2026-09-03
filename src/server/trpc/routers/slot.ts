@@ -209,22 +209,36 @@ export const slotRouter = router({
       });
     }),
 
-  bulkGenerate: frontDeskProcedure
+  bulkGenerate: protectedProcedure
     .input(
       z.object({
         providerId: z.string(),
         startDate: z.string(), // "YYYY-MM-DD"
         endDate: z.string(),   // "YYYY-MM-DD"
         daysOfWeek: z.array(z.number().min(0).max(6)), // 0 = Sunday, 1 = Monday, etc.
-        timeBlocks: z.array(
-          z.object({
-            startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/),
-            durationMinutes: z.number().int().positive().default(30),
-          })
-        ),
+        startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+        durationMinutes: z.number().int().positive().default(30).optional(),
+        timeBlocks: z
+          .array(
+            z.object({
+              startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/),
+              durationMinutes: z.number().int().positive().default(30),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const user = ctx.session.user;
+
+      // RBAC: Front Desk can bulk generate for any provider; Providers only for themselves
+      if (user.role === "PROVIDER" && input.providerId !== user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Providers can only generate availability slots for themselves.",
+        });
+      }
+
       const start = parseISO(input.startDate);
       const end = parseISO(input.endDate);
 
@@ -232,6 +246,21 @@ export const slotRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Start date must be before or equal to end date.",
+        });
+      }
+
+      // Resolve time blocks: either from timeBlocks array or single (startTime, durationMinutes)
+      const blocks =
+        input.timeBlocks && input.timeBlocks.length > 0
+          ? input.timeBlocks
+          : input.startTime
+          ? [{ startTime: input.startTime, durationMinutes: input.durationMinutes || 30 }]
+          : [];
+
+      if (blocks.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "At least one start time or time block must be specified.",
         });
       }
 
@@ -245,8 +274,8 @@ export const slotRouter = router({
           const dateStr = format(currentDate, "yyyy-MM-dd");
           const dateObj = new Date(dateStr);
 
-          for (const block of input.timeBlocks) {
-            // Check collision with existing slot
+          for (const block of blocks) {
+            // Check collision with existing slot or booked appointment
             const existingSlot = await ctx.prisma.slot.findUnique({
               where: {
                 providerId_date_startTime: {
@@ -263,8 +292,8 @@ export const slotRouter = router({
                 date: dateStr,
                 startTime: block.startTime,
                 reason: existingSlot.appointment
-                  ? "Collides with existing booked appointment."
-                  : "Collides with existing slot.",
+                  ? `Collides with existing booked appointment for that provider (Patient: ${existingSlot.appointment.patientName || "Booked"}).`
+                  : "Collides with existing availability slot.",
               });
             } else {
               await ctx.prisma.slot.create({
@@ -291,6 +320,69 @@ export const slotRouter = router({
         skippedCount: skipped.length,
         created,
         skipped,
+      };
+    }),
+
+  exportDayScheduleCsv: protectedProcedure
+    .input(
+      z.object({
+        date: z.string(), // "YYYY-MM-DD"
+        providerId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = ctx.session.user;
+      const targetDate = new Date(input.date);
+
+      // Provider can only export their own schedule
+      const effectiveProviderId =
+        user.role === "PROVIDER" ? user.id : input.providerId || undefined;
+
+      const slots = await ctx.prisma.slot.findMany({
+        where: {
+          date: targetDate,
+          ...(effectiveProviderId ? { providerId: effectiveProviderId } : {}),
+        },
+        include: {
+          provider: { select: { name: true } },
+          appointment: { select: { patientName: true, status: true } },
+        },
+        orderBy: [
+          { startTime: "asc" },
+          { provider: { name: "asc" } },
+        ],
+      });
+
+      // Helper to escape CSV values
+      const escapeCsv = (str: string) => {
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      // Header row: Provider, Time, Patient, Status
+      const headers = ["Provider", "Time", "Patient", "Status"];
+      const rows = slots.map((s) => {
+        const providerName = s.provider.name;
+        const time = s.startTime;
+        const patient = s.appointment ? s.appointment.patientName : "(Open Slot)";
+        const status = s.appointment
+          ? s.appointment.status
+          : s.status === "ACTIVE"
+          ? "AVAILABLE"
+          : s.status;
+
+        return [escapeCsv(providerName), escapeCsv(time), escapeCsv(patient), escapeCsv(status)].join(",");
+      });
+
+      const csvContent = [headers.join(","), ...rows].join("\n");
+      const filename = `schedule-${input.date}${effectiveProviderId ? "-provider" : "-all"}.csv`;
+
+      return {
+        csvContent,
+        filename,
+        totalRows: slots.length,
       };
     }),
 });
