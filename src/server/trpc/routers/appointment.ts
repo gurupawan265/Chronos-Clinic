@@ -263,6 +263,72 @@ export const appointmentRouter = router({
       });
     }),
 
+  updatePatientDetails: protectedProcedure
+    .input(
+      z.object({
+        appointmentId: z.string(),
+        patientName: z.string().min(1, "Patient name is required."),
+        patientContact: z.string().min(1, "Patient contact is required."),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = ctx.session.user;
+
+      const appointment = await ctx.prisma.appointment.findUnique({
+        where: { id: input.appointmentId },
+        include: {
+          supportingProviders: {
+            where: { unassignedAt: null },
+          },
+        },
+      });
+
+      if (!appointment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Appointment not found.",
+        });
+      }
+
+      // RBAC: FRONT_DESK can edit any appointment.
+      // PROVIDER can only edit on their own schedule (as scheduling or supporting provider).
+      if (user.role === "PROVIDER") {
+        const isScheduling = appointment.schedulingProviderId === user.id;
+        const isSupporting = appointment.supportingProviders.some(
+          (sp) => sp.providerId === user.id
+        );
+        if (!isScheduling && !isSupporting) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Access restricted: Providers can only edit appointments on their own schedule.",
+          });
+        }
+      }
+
+      return ctx.prisma.$transaction(async (tx) => {
+        const updated = await tx.appointment.update({
+          where: { id: input.appointmentId },
+          data: {
+            patientName: input.patientName,
+            patientContact: input.patientContact,
+          },
+        });
+
+        await tx.statusHistory.create({
+          data: {
+            appointmentId: input.appointmentId,
+            fromStatus: appointment.status,
+            toStatus: appointment.status,
+            changedByUserId: user.id,
+            reason: `Updated patient details: name to '${input.patientName}', contact to '${input.patientContact}'.`,
+          },
+        });
+
+        return updated;
+      });
+    }),
+
   updateStatus: protectedProcedure
     .input(
       z.object({
@@ -276,7 +342,12 @@ export const appointmentRouter = router({
 
       const appointment = await ctx.prisma.appointment.findUnique({
         where: { id: input.appointmentId },
-        include: { slot: true },
+        include: {
+          slot: true,
+          supportingProviders: {
+            where: { unassignedAt: null },
+          },
+        },
       });
 
       if (!appointment) {
@@ -286,12 +357,20 @@ export const appointmentRouter = router({
         });
       }
 
-      // Rule: Provider can only act on their own schedule
-      if (user.role === "PROVIDER" && appointment.schedulingProviderId !== user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Providers can only manage their own appointments.",
-        });
+      // Rule: FRONT_DESK can confirm/cancel any appointment.
+      // PROVIDER can only act on their own schedule (as scheduling or supporting provider).
+      if (user.role === "PROVIDER") {
+        const isScheduling = appointment.schedulingProviderId === user.id;
+        const isSupporting = appointment.supportingProviders.some(
+          (sp) => sp.providerId === user.id
+        );
+        if (!isScheduling && !isSupporting) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Access restricted: Providers can only see and act on their own schedule (as scheduling or supporting provider).",
+          });
+        }
       }
 
       const fromStatus = appointment.status;
@@ -422,7 +501,8 @@ export const appointmentRouter = router({
       if (user.role !== "FRONT_DESK") {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Only Front Desk staff can reassign appointments between providers.",
+          message:
+            "Access restricted: Providers cannot reassign an appointment away from themselves. Only Front Desk staff can reassign scheduling providers between providers.",
         });
       }
 

@@ -12,10 +12,23 @@ export default function HomePage() {
     enabled: !!session?.user,
   });
 
-  const [activeTab, setActiveTab] = useState<"appointments" | "slots" | "bulk" | "analytics">("appointments");
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const isFrontDesk = session?.user?.role === "FRONT_DESK";
+  const isProvider = session?.user?.role === "PROVIDER";
 
-  // Filters for Appointments
+  // Tab State
+  const [activeTab, setActiveTab] = useState<"schedule" | "appointments" | "bulk" | "analytics">("schedule");
+
+  // Selected entities for modals
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const [bookingSlot, setBookingSlot] = useState<any | null>(null);
+  const [editingSlot, setEditingSlot] = useState<any | null>(null);
+  const [showCreateSlotModal, setShowCreateSlotModal] = useState(false);
+  const [editingPatientAppt, setEditingPatientAppt] = useState<any | null>(null);
+  const [reassigningAppt, setReassigningAppt] = useState<any | null>(null);
+
+  // Filters for Schedule & Appointments
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [scheduleProviderFilter, setScheduleProviderFilter] = useState("");
   const [search, setSearch] = useState("");
   const [filterProviderId, setFilterProviderId] = useState("");
   const [filterStatus, setFilterStatus] = useState<any>("");
@@ -28,6 +41,7 @@ export default function HomePage() {
   const { data: alertsData, refetch: refetchAlerts } = trpc.alert.getUnconfirmedAlerts.useQuery(undefined, {
     enabled: !!session?.user,
   });
+
   const {
     data: appointmentsData,
     isLoading: appointmentsLoading,
@@ -44,8 +58,11 @@ export default function HomePage() {
   );
 
   const { data: slotsData, refetch: refetchSlots } = trpc.slot.getAll.useQuery(
-    {},
-    { enabled: !!session?.user && activeTab === "slots" }
+    {
+      date: selectedScheduleDate || undefined,
+      providerId: scheduleProviderFilter || undefined,
+    },
+    { enabled: !!session?.user }
   );
 
   const { data: appointmentDetail, refetch: refetchDetail } = trpc.appointment.getById.useQuery(
@@ -53,10 +70,11 @@ export default function HomePage() {
     { enabled: !!selectedAppointmentId }
   );
 
-  // Mutations
+  // Status feedback
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
+  // Mutations
   const dismissAlertMutation = trpc.alert.dismiss.useMutation({
     onSuccess: () => {
       refetchAlerts();
@@ -69,6 +87,7 @@ export default function HomePage() {
     onSuccess: () => {
       refetchAppointments();
       refetchStats();
+      refetchSlots();
       if (selectedAppointmentId) refetchDetail();
       setActionSuccess("Status updated successfully.");
       setActionError(null);
@@ -79,11 +98,68 @@ export default function HomePage() {
     },
   });
 
+  const updatePatientDetailsMutation = trpc.appointment.updatePatientDetails.useMutation({
+    onSuccess: () => {
+      refetchAppointments();
+      refetchSlots();
+      if (selectedAppointmentId) refetchDetail();
+      setEditingPatientAppt(null);
+      setActionSuccess("Patient details updated successfully.");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const reassignMutation = trpc.appointment.reassign.useMutation({
+    onSuccess: () => {
+      refetchAppointments();
+      refetchSlots();
+      if (selectedAppointmentId) refetchDetail();
+      setReassigningAppt(null);
+      setActionSuccess("Appointment reassigned successfully.");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const bookSlotMutation = trpc.appointment.bookSlot.useMutation({
+    onSuccess: () => {
+      refetchAppointments();
+      refetchSlots();
+      refetchStats();
+      setBookingSlot(null);
+      setActionSuccess("Slot successfully booked and converted to Appointment!");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const createSlotMutation = trpc.slot.create.useMutation({
+    onSuccess: () => {
+      refetchSlots();
+      setShowCreateSlotModal(false);
+      setActionSuccess("Availability slot created successfully.");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
+  const updateSlotMutation = trpc.slot.update.useMutation({
+    onSuccess: () => {
+      refetchSlots();
+      setEditingSlot(null);
+      setActionSuccess("Slot updated successfully.");
+      setActionError(null);
+    },
+    onError: (err) => setActionError(err.message),
+  });
+
   const archiveSlotMutation = trpc.slot.archive.useMutation({
     onSuccess: () => {
       refetchSlots();
       setActionSuccess("Slot archived.");
     },
+    onError: (err) => setActionError(err.message),
   });
 
   const restoreSlotMutation = trpc.slot.restore.useMutation({
@@ -91,6 +167,7 @@ export default function HomePage() {
       refetchSlots();
       setActionSuccess("Slot restored to active schedule.");
     },
+    onError: (err) => setActionError(err.message),
   });
 
   // Note creation
@@ -108,16 +185,35 @@ export default function HomePage() {
   const [bulkProviderId, setBulkProviderId] = useState("");
   const [bulkStartDate, setBulkStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [bulkEndDate, setBulkEndDate] = useState(format(new Date(Date.now() + 14 * 86400000), "yyyy-MM-dd"));
-  const [bulkDays, setBulkDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri
+  const [bulkDays, setBulkDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [bulkResult, setBulkResult] = useState<any>(null);
 
   const bulkMutation = trpc.slot.bulkGenerate.useMutation({
     onSuccess: (data) => {
       setBulkResult(data);
       refetchSlots();
+      setActionSuccess(`Bulk generation completed: ${data.createdCount} created, ${data.skippedCount} skipped.`);
     },
     onError: (err) => setActionError(err.message),
   });
+
+  // Slot Form inputs
+  const [newSlotProviderId, setNewSlotProviderId] = useState("");
+  const [newSlotDate, setNewSlotDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [newSlotStartTime, setNewSlotStartTime] = useState("09:00");
+  const [newSlotDuration, setNewSlotDuration] = useState(30);
+
+  // Edit Slot inputs
+  const [editSlotDate, setEditSlotDate] = useState("");
+  const [editSlotStartTime, setEditSlotStartTime] = useState("");
+  const [editSlotDuration, setEditSlotDuration] = useState(30);
+
+  // Booking Form inputs
+  const [patientNameInput, setPatientNameInput] = useState("");
+  const [patientContactInput, setPatientContactInput] = useState("");
+
+  // Reassign inputs
+  const [newReassignProviderId, setNewReassignProviderId] = useState("");
 
   if (sessionLoading) {
     return (
@@ -143,8 +239,6 @@ export default function HomePage() {
       </div>
     );
   }
-
-  const isFrontDesk = session.user.role === "FRONT_DESK";
 
   return (
     <div style={{ paddingBottom: "4rem" }}>
@@ -288,7 +382,7 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* Headline Numbers Cards (Goal 8) */}
+        {/* Headline Numbers Cards */}
         {stats && (
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
             <div className="glass-card" style={{ padding: "1.25rem" }}>
@@ -322,40 +416,237 @@ export default function HomePage() {
         )}
 
         {/* Tab Navigation */}
-        <div style={{ display: "flex", gap: "0.5rem", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "0.75rem", marginBottom: "1.5rem" }}>
-          <button
-            onClick={() => setActiveTab("appointments")}
-            className={`btn btn-sm ${activeTab === "appointments" ? "btn-primary" : "btn-secondary"}`}
-          >
-            Appointments Directory
-          </button>
-          <button
-            onClick={() => setActiveTab("slots")}
-            className={`btn btn-sm ${activeTab === "slots" ? "btn-primary" : "btn-secondary"}`}
-          >
-            Availability Slots
-          </button>
-          {isFrontDesk && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-subtle)", paddingBottom: "0.75rem", marginBottom: "1.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
             <button
-              onClick={() => setActiveTab("bulk")}
-              className={`btn btn-sm ${activeTab === "bulk" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setActiveTab("schedule")}
+              className={`btn btn-sm ${activeTab === "schedule" ? "btn-primary" : "btn-secondary"}`}
             >
-              Bulk Availability Generator
+              {isFrontDesk ? "📅 All Providers Schedule View" : "🩺 My Schedule View"}
             </button>
-          )}
+            <button
+              onClick={() => setActiveTab("appointments")}
+              className={`btn btn-sm ${activeTab === "appointments" ? "btn-primary" : "btn-secondary"}`}
+            >
+              📋 Appointments Directory
+            </button>
+            {isFrontDesk && (
+              <button
+                onClick={() => setActiveTab("bulk")}
+                className={`btn btn-sm ${activeTab === "bulk" ? "btn-primary" : "btn-secondary"}`}
+              >
+                ⚡ Bulk Availability Generator
+              </button>
+            )}
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`btn btn-sm ${activeTab === "analytics" ? "btn-primary" : "btn-secondary"}`}
+            >
+              📊 Analytics & Trends
+            </button>
+          </div>
+
+          {/* Quick Create Slot action button */}
           <button
-            onClick={() => setActiveTab("analytics")}
-            className={`btn btn-sm ${activeTab === "analytics" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => {
+              setNewSlotProviderId(isProvider ? session.user.id : (providers?.[0]?.id || ""));
+              setShowCreateSlotModal(true);
+            }}
+            className="btn btn-primary btn-sm"
           >
-            Dashboard Analytics
+            + Create Availability Slot
           </button>
         </div>
 
-        {/* TAB 1: Appointments List */}
+        {/* TAB 1: SCHEDULE VIEW (Front Desk "All Providers" vs Provider "My Schedule") */}
+        {activeTab === "schedule" && (
+          <section className="glass-card" style={{ padding: "1.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
+                  {isFrontDesk ? "All Providers Daily Schedule" : `Schedule for ${session.user.name}`}
+                </h2>
+                <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                  {isFrontDesk
+                    ? "Manage slots and bookings across all clinic providers. Unbooked slots become appointments when reserved."
+                    : "Your active agenda as Scheduling Provider or Supporting Care Team member."}
+                </p>
+              </div>
+
+              {/* Schedule Filters */}
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={selectedScheduleDate}
+                  onChange={(e) => setSelectedScheduleDate(e.target.value)}
+                  style={{ width: "auto" }}
+                />
+
+                {isFrontDesk && (
+                  <select
+                    className="select-field"
+                    value={scheduleProviderFilter}
+                    onChange={(e) => setScheduleProviderFilter(e.target.value)}
+                    style={{ width: "auto" }}
+                  >
+                    <option value="">All Providers</option>
+                    {providers?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <button
+                  onClick={() => refetchSlots()}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Schedule Slots Table */}
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Provider</th>
+                    <th>Status / Mode</th>
+                    <th>Patient / Booking Details</th>
+                    <th>Duration</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {slotsData?.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: "2.5rem" }}>
+                        No slots scheduled for this date. Click "+ Create Availability Slot" to add time blocks.
+                      </td>
+                    </tr>
+                  ) : (
+                    slotsData?.map((slot) => {
+                      const isBooked = !!slot.appointment;
+                      const appt = slot.appointment;
+
+                      return (
+                        <tr key={slot.id}>
+                          <td style={{ fontWeight: 700, fontSize: "1rem", color: "#fff" }}>
+                            {slot.startTime}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{slot.provider.name}</div>
+                            {isProvider && (
+                              <span style={{ fontSize: "0.7rem", color: "var(--brand-primary-light)" }}>
+                                Scheduling Provider
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {isBooked ? (
+                              <span className={`badge badge-${appt?.status.toLowerCase()}`}>
+                                <span className="badge-dot" />
+                                {appt?.status.replace("_", " ")}
+                              </span>
+                            ) : (
+                              <span className={`badge ${slot.status === "ACTIVE" ? "badge-checked_in" : "badge-cancelled"}`}>
+                                {slot.status === "ACTIVE" ? "OPEN SLOT" : "ARCHIVED"}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {isBooked ? (
+                              <div>
+                                <div style={{ fontWeight: 600, color: "#fff" }}>{appt?.patientName}</div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{appt?.patientContact}</div>
+                              </div>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                                Available for Booking
+                              </span>
+                            )}
+                          </td>
+                          <td>{slot.durationMinutes} mins</td>
+                          <td>
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                              {/* Book button for unbooked active slot */}
+                              {!isBooked && slot.status === "ACTIVE" && (
+                                <button
+                                  onClick={() => {
+                                    setBookingSlot(slot);
+                                    setPatientNameInput("");
+                                    setPatientContactInput("");
+                                  }}
+                                  className="btn btn-primary btn-sm"
+                                >
+                                  Book Slot
+                                </button>
+                              )}
+
+                              {/* Edit unbooked slot */}
+                              {!isBooked && (
+                                <button
+                                  onClick={() => {
+                                    setEditingSlot(slot);
+                                    setEditSlotDate(format(new Date(slot.date), "yyyy-MM-dd"));
+                                    setEditSlotStartTime(slot.startTime);
+                                    setEditSlotDuration(slot.durationMinutes);
+                                  }}
+                                  className="btn btn-secondary btn-sm"
+                                >
+                                  Edit
+                                </button>
+                              )}
+
+                              {/* View / Manage booked appointment */}
+                              {isBooked && (
+                                <button
+                                  onClick={() => setSelectedAppointmentId(appt?.id!)}
+                                  className="btn btn-secondary btn-sm"
+                                >
+                                  Manage Details
+                                </button>
+                              )}
+
+                              {/* Archive/Restore unbooked slot */}
+                              {!isBooked && (
+                                slot.status === "ACTIVE" ? (
+                                  <button
+                                    onClick={() => archiveSlotMutation.mutate({ id: slot.id })}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ color: "var(--alert-red)" }}
+                                  >
+                                    Archive
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => restoreSlotMutation.mutate({ id: slot.id })}
+                                    className="btn btn-secondary btn-sm"
+                                  >
+                                    Restore
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* TAB 2: APPOINTMENTS DIRECTORY */}
         {activeTab === "appointments" && (
           <section className="glass-card" style={{ padding: "1.5rem" }}>
-            {/* Filter controls */}
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isFrontDesk ? "2fr 1fr 1fr" : "2fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
               <input
                 type="text"
                 className="input-field"
@@ -410,7 +701,7 @@ export default function HomePage() {
                   <tr>
                     <th>Patient</th>
                     <th>Date & Time</th>
-                    <th>Provider</th>
+                    <th>Scheduling Provider</th>
                     <th>Status</th>
                     <th>Care Team</th>
                     <th>Actions</th>
@@ -440,7 +731,14 @@ export default function HomePage() {
                           <div>{format(new Date(app.slot.date), "EEE, MMM d, yyyy")}</div>
                           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{app.slot.startTime} ({app.slot.durationMinutes}m)</div>
                         </td>
-                        <td>{app.schedulingProvider.name}</td>
+                        <td>
+                          <div>{app.schedulingProvider.name}</div>
+                          {isProvider && app.schedulingProviderId === session.user.id && (
+                            <span style={{ fontSize: "0.65rem", color: "var(--brand-primary-light)", fontWeight: 700 }}>
+                              (Primary)
+                            </span>
+                          )}
+                        </td>
                         <td>
                           <span className={`badge badge-${app.status.toLowerCase()}`}>
                             <span className="badge-dot" />
@@ -457,12 +755,20 @@ export default function HomePage() {
                           )}
                         </td>
                         <td>
-                          <button
-                            onClick={() => setSelectedAppointmentId(app.id)}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            Details & History
-                          </button>
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button
+                              onClick={() => setSelectedAppointmentId(app.id)}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Timeline & Actions
+                            </button>
+                            <button
+                              onClick={() => setEditingPatientAppt(app)}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Edit Patient
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -495,75 +801,6 @@ export default function HomePage() {
                 </div>
               </div>
             )}
-          </section>
-        )}
-
-        {/* TAB 2: Availability Slots */}
-        {activeTab === "slots" && (
-          <section className="glass-card" style={{ padding: "1.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-              <h2 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Provider Availability Slots</h2>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                Unbooked slots become appointments when reserved
-              </span>
-            </div>
-
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Provider</th>
-                    <th>Date</th>
-                    <th>Time</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Booking Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slotsData?.map((slot) => (
-                    <tr key={slot.id}>
-                      <td>{slot.provider.name}</td>
-                      <td>{format(new Date(slot.date), "EEE, MMM d, yyyy")}</td>
-                      <td>{slot.startTime}</td>
-                      <td>{slot.durationMinutes} min</td>
-                      <td>
-                        <span className={`badge ${slot.status === "ACTIVE" ? "badge-checked_in" : "badge-cancelled"}`}>
-                          {slot.status}
-                        </span>
-                      </td>
-                      <td>
-                        {slot.appointment ? (
-                          <span style={{ color: "var(--status-confirmed)", fontWeight: 600, fontSize: "0.85rem" }}>
-                            Booked ({slot.appointment.patientName})
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Available</span>
-                        )}
-                      </td>
-                      <td>
-                        {slot.status === "ACTIVE" ? (
-                          <button
-                            onClick={() => archiveSlotMutation.mutate({ id: slot.id })}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            Archive
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => restoreSlotMutation.mutate({ id: slot.id })}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            Restore
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </section>
         )}
 
@@ -682,26 +919,15 @@ export default function HomePage() {
                 <p style={{ fontSize: "0.875rem", color: "var(--status-requested)" }}>
                   ⚠️ Skipped (Collisions): {bulkResult.skippedCount} slots
                 </p>
-                {bulkResult.skipped.length > 0 && (
-                  <ul style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)", maxHeight: "120px", overflowY: "auto" }}>
-                    {bulkResult.skipped.slice(0, 5).map((s: any, idx: number) => (
-                      <li key={idx}>
-                        {s.date} at {s.startTime} — {s.reason}
-                      </li>
-                    ))}
-                    {bulkResult.skipped.length > 5 && <li>...and {bulkResult.skipped.length - 5} more</li>}
-                  </ul>
-                )}
               </div>
             )}
           </section>
         )}
 
-        {/* TAB 4: Dashboard Analytics (Goal 8) */}
+        {/* TAB 4: Dashboard Analytics */}
         {activeTab === "analytics" && stats && (
           <section style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-              {/* Status Breakdown */}
               <div className="glass-card" style={{ padding: "1.5rem" }}>
                 <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1rem" }}>Appointments by Status</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -717,7 +943,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Provider Breakdown */}
               <div className="glass-card" style={{ padding: "1.5rem" }}>
                 <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1rem" }}>Appointments by Provider</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -768,7 +993,343 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* Modal Drawer: Appointment Details, Status Progression & Immutable Timeline (Goals 3, 4, 9) */}
+        {/* MODAL 1: CREATE AVAILABILITY SLOT */}
+        {showCreateSlotModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Create Availability Slot</h3>
+                <button onClick={() => setShowCreateSlotModal(false)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createSlotMutation.mutate({
+                    providerId: isProvider ? session.user.id : newSlotProviderId,
+                    date: newSlotDate,
+                    startTime: newSlotStartTime,
+                    durationMinutes: Number(newSlotDuration),
+                  });
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                {isFrontDesk ? (
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Provider</label>
+                    <select
+                      className="select-field"
+                      value={newSlotProviderId}
+                      onChange={(e) => setNewSlotProviderId(e.target.value)}
+                      required
+                    >
+                      <option value="">Select Provider...</option>
+                      {providers?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Provider</label>
+                    <input type="text" className="input-field" value={session.user.name} disabled />
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Date</label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={newSlotDate}
+                    onChange={(e) => setNewSlotDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Start Time (HH:mm)</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="09:00"
+                      value={newSlotStartTime}
+                      onChange={(e) => setNewSlotStartTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      className="input-field"
+                      value={newSlotDuration}
+                      onChange={(e) => setNewSlotDuration(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={createSlotMutation.isLoading}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  {createSlotMutation.isLoading ? "Creating..." : "Save Availability Slot"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 2: EDIT UNBOOKED SLOT */}
+        {editingSlot && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Edit Unbooked Slot</h3>
+                <button onClick={() => setEditingSlot(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  updateSlotMutation.mutate({
+                    id: editingSlot.id,
+                    date: editSlotDate,
+                    startTime: editSlotStartTime,
+                    durationMinutes: Number(editSlotDuration),
+                  });
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Provider</label>
+                  <input type="text" className="input-field" value={editingSlot.provider?.name} disabled />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Date</label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={editSlotDate}
+                    onChange={(e) => setEditSlotDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Start Time (HH:mm)</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={editSlotStartTime}
+                      onChange={(e) => setEditSlotStartTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      className="input-field"
+                      value={editSlotDuration}
+                      onChange={(e) => setEditSlotDuration(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={updateSlotMutation.isLoading}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  {updateSlotMutation.isLoading ? "Updating..." : "Update Slot"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 3: BOOK SLOT (CONVERT SLOT TO APPOINTMENT) */}
+        {bookingSlot && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Book Appointment Slot</h3>
+                <button onClick={() => setBookingSlot(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.25rem" }}>
+                Booking this slot converts it directly into a tracked Appointment record for {bookingSlot.provider?.name} on {format(new Date(bookingSlot.date), "MMM d")} at {bookingSlot.startTime}.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  bookSlotMutation.mutate({
+                    slotId: bookingSlot.id,
+                    patientName: patientNameInput,
+                    patientContact: patientContactInput,
+                  });
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Patient Full Name</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. Jane Doe"
+                    value={patientNameInput}
+                    onChange={(e) => setPatientNameInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Patient Contact (Phone or Email)</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. 555-0199 or jane@example.com"
+                    value={patientContactInput}
+                    onChange={(e) => setPatientContactInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={bookSlotMutation.isLoading}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  {bookSlotMutation.isLoading ? "Reserving Slot..." : "Confirm & Book Slot"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 4: EDIT PATIENT DETAILS */}
+        {editingPatientAppt && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Edit Patient Details</h3>
+                <button onClick={() => setEditingPatientAppt(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  updatePatientDetailsMutation.mutate({
+                    appointmentId: editingPatientAppt.id,
+                    patientName: editingPatientAppt.patientName,
+                    patientContact: editingPatientAppt.patientContact,
+                  });
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Patient Name</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editingPatientAppt.patientName}
+                    onChange={(e) => setEditingPatientAppt({ ...editingPatientAppt, patientName: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>Patient Contact</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={editingPatientAppt.patientContact}
+                    onChange={(e) => setEditingPatientAppt({ ...editingPatientAppt, patientContact: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={updatePatientDetailsMutation.isLoading}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  {updatePatientDetailsMutation.isLoading ? "Saving..." : "Save Patient Details"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 5: REASSIGN SCHEDULING PROVIDER (Front Desk Only) */}
+        {reassigningAppt && isFrontDesk && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Reassign Appointment</h3>
+                <button onClick={() => setReassigningAppt(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                Reassign patient <strong>{reassigningAppt.patientName}</strong> to another physician or therapist.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  reassignMutation.mutate({
+                    appointmentId: reassigningAppt.id,
+                    newProviderId: newReassignProviderId,
+                  });
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>New Scheduling Provider</label>
+                  <select
+                    className="select-field"
+                    value={newReassignProviderId}
+                    onChange={(e) => setNewReassignProviderId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select Target Provider...</option>
+                    {providers
+                      ?.filter((p) => p.id !== reassigningAppt.schedulingProviderId)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={reassignMutation.isLoading || !newReassignProviderId}
+                >
+                  {reassignMutation.isLoading ? "Reassigning..." : "Reassign Provider"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 6: APPOINTMENT DETAILS, STATUS ACTIONS & TIMELINE */}
         {selectedAppointmentId && appointmentDetail && (
           <div
             style={{
@@ -788,19 +1349,35 @@ export default function HomePage() {
                 <div>
                   <h2 style={{ fontSize: "1.5rem", fontWeight: 800 }}>{appointmentDetail.patientName}</h2>
                   <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
-                    Contact: {appointmentDetail.patientContact} • Scheduling Provider: {appointmentDetail.schedulingProvider.name}
+                    Contact: {appointmentDetail.patientContact} • Scheduling Provider: <strong>{appointmentDetail.schedulingProvider.name}</strong>
                   </p>
                 </div>
-                <button
-                  onClick={() => setSelectedAppointmentId(null)}
-                  className="btn btn-secondary btn-sm"
-                  style={{ borderRadius: "50%", width: "2rem", height: "2rem", padding: 0 }}
-                >
-                  ✕
-                </button>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={() => setEditingPatientAppt(appointmentDetail)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Edit Patient
+                  </button>
+                  {isFrontDesk && (
+                    <button
+                      onClick={() => setReassigningAppt(appointmentDetail)}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Reassign Provider...
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedAppointmentId(null)}
+                    className="btn btn-secondary btn-sm"
+                    style={{ borderRadius: "50%", width: "2rem", height: "2rem", padding: 0 }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              {/* Current Status and Action Triggers */}
+              {/* Status and Action Buttons */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1rem", background: "rgba(0,0,0,0.3)", borderRadius: "var(--radius-sm)", marginBottom: "1.5rem" }}>
                 <div>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "block" }}>Current Status</span>
@@ -810,14 +1387,14 @@ export default function HomePage() {
                   </span>
                 </div>
 
-                {/* State Machine Transition Actions (Goal 4 Rules) */}
+                {/* State Machine Transition Actions */}
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                   {appointmentDetail.status === "REQUESTED" && (
                     <button
                       onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CONFIRMED" })}
                       className="btn btn-primary btn-sm"
                     >
-                      Confirm
+                      Confirm Appointment
                     </button>
                   )}
 
@@ -827,7 +1404,7 @@ export default function HomePage() {
                         onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CHECKED_IN" })}
                         className="btn btn-primary btn-sm"
                       >
-                        Check In
+                        Check In Patient
                       </button>
                       <button
                         onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "NO_SHOW" })}
@@ -863,13 +1440,13 @@ export default function HomePage() {
                       className="btn btn-secondary btn-sm"
                       style={{ color: "var(--alert-red)" }}
                     >
-                      Cancel...
+                      Cancel Appointment...
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Goal 3: Visit Notes Section */}
+              {/* Visit Notes */}
               <div style={{ marginBottom: "1.5rem" }}>
                 <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem" }}>Clinical Visit Notes</h3>
                 {appointmentDetail.visitNotes.length === 0 ? (
@@ -889,7 +1466,7 @@ export default function HomePage() {
                 )}
 
                 {/* Add Note form for Providers */}
-                {session.user.role === "PROVIDER" && (
+                {isProvider && (
                   <div style={{ marginTop: "1rem" }}>
                     <textarea
                       className="input-field"
@@ -910,7 +1487,7 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Goal 9: Immutable Audit Timeline */}
+              {/* Immutable Audit Timeline */}
               <div>
                 <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.75rem" }}>
                   Immutable Audit History Timeline

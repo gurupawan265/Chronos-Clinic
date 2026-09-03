@@ -44,6 +44,33 @@ export const slotRouter = router({
       });
     }),
 
+  getById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const slot = await ctx.prisma.slot.findUnique({
+        where: { id: input.id },
+        include: {
+          provider: {
+            select: { id: true, name: true, email: true },
+          },
+          appointment: true,
+        },
+      });
+
+      if (!slot) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Slot not found." });
+      }
+
+      if (ctx.session.user.role === "PROVIDER" && slot.providerId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Providers can only access slots on their own schedule.",
+        });
+      }
+
+      return slot;
+    }),
+
   create: protectedProcedure
     .input(
       z.object({
@@ -56,11 +83,11 @@ export const slotRouter = router({
     .mutation(async ({ ctx, input }) => {
       const user = ctx.session.user;
 
-      // Rule: Providers cannot create slots for another provider
+      // Rule: FRONT_DESK can create slots for any provider; PROVIDER cannot create slots for others
       if (user.role === "PROVIDER" && input.providerId !== user.id) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Providers can only create appointment slots for themselves.",
+          message: "Access restricted: Providers cannot create slots for other providers. Only Front Desk staff can create slots for any provider.",
         });
       }
 
