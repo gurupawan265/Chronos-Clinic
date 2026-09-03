@@ -1,0 +1,172 @@
+// Prisma Schema for Chronos Clinic Appointment Scheduling System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  FRONT_DESK
+  PROVIDER
+}
+
+enum SlotStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Slots where this user is the provider
+  slots Slot[]
+
+  // Primary scheduling provider for appointments
+  scheduledAppointments Appointment[] @relation("SchedulingProvider")
+
+  // Supporting provider assignments (many-to-many with audit history)
+  supportingAssignments SupportingProviderAssignment[]
+
+  // Clinical visit notes authored by this provider
+  visitNotes VisitNote[]
+
+  // Status transitions performed by this user (append-only audit trail)
+  statusChanges StatusHistory[]
+
+  // Alerts dismissed by this user
+  dismissedAlerts AlertDismissal[]
+
+  @@index([role])
+}
+
+model Slot {
+  id              String     @id @default(cuid())
+  providerId      String
+  date            DateTime   @db.Date
+  startTime       String     // Format: "HH:mm" (24-hour, e.g. "09:00", "14:30")
+  durationMinutes Int        @default(30)
+  status          SlotStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  provider    User         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  appointment Appointment?
+
+  // Prevent double-booking: a provider cannot have overlapping slots at the same date and startTime
+  @@unique([providerId, date, startTime])
+  @@index([providerId, date])
+  @@index([status])
+}
+
+model Appointment {
+  id                   String            @id @default(cuid())
+  slotId               String            @unique
+  schedulingProviderId String
+  patientName          String
+  patientContact       String
+  status               AppointmentStatus @default(REQUESTED)
+  cancellationReason   String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  // 1:1 relation to the underlying slot record
+  slot Slot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  // Primary scheduling provider (lives directly on Appointment)
+  schedulingProvider User @relation("SchedulingProvider", fields: [schedulingProviderId], references: [id], onDelete: Restrict)
+
+  // Care team: supporting providers assigned to this appointment
+  supportingProviders SupportingProviderAssignment[]
+
+  // Clinical documentation authored by providers
+  visitNotes VisitNote[]
+
+  // Immutable append-only audit trail of lifecycle status transitions
+  statusHistory StatusHistory[]
+
+  // Dismissals of unconfirmed alerts
+  alertDismissals AlertDismissal[]
+
+  @@index([status])
+  @@index([schedulingProviderId])
+  @@index([patientName])
+}
+
+model VisitNote {
+  id               String   @id @default(cuid())
+  appointmentId    String
+  authorProviderId String
+  content          String   @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  authorProvider User        @relation(fields: [authorProviderId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId])
+  @@index([authorProviderId])
+}
+
+model StatusHistory {
+  id              String             @id @default(cuid())
+  appointmentId   String
+  fromStatus      AppointmentStatus?
+  toStatus        AppointmentStatus
+  changedByUserId String
+  reason          String?            @db.Text
+  changedAt       DateTime           @default(now())
+
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  changedByUser User        @relation(fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId])
+  @@index([changedAt])
+}
+
+model SupportingProviderAssignment {
+  id            String    @id @default(cuid())
+  appointmentId String
+  providerId    String
+  assignedAt    DateTime  @default(now())
+  unassignedAt  DateTime? // Preserved for complete audit history when unassigned
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  provider    User        @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId])
+  @@index([providerId])
+}
+
+model AlertDismissal {
+  id                      String   @id @default(cuid())
+  appointmentId           String
+  dismissedAt             DateTime @default(now())
+  dismissedForScheduledAt DateTime
+  dismissedByUserId       String?
+
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  dismissedByUser User?       @relation(fields: [dismissedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId])
+  @@index([dismissedForScheduledAt])
+}
