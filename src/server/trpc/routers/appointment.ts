@@ -2,14 +2,18 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { AppointmentStatus, Prisma } from "@prisma/client";
+import {
+  transitionStatus,
+  validateStatusTransition,
+  LEGAL_TRANSITIONS_MAP,
+  getSlotScheduledDateTime,
+  InvalidStatusTransitionError,
+  EarlyNoShowError,
+  CancellationReasonRequiredError,
+  CancellationBlockedError,
+} from "../../appointmentStateMachine";
 
-// Helper to compute scheduled Date from slot date and startTime ("HH:mm")
-export function getSlotScheduledDateTime(date: Date, startTime: string): Date {
-  const [hours, minutes] = startTime.split(":").map(Number);
-  const scheduled = new Date(date);
-  scheduled.setHours(hours, minutes, 0, 0);
-  return scheduled;
-}
+export { getSlotScheduledDateTime };
 
 export const appointmentRouter = router({
   list: protectedProcedure
@@ -373,117 +377,132 @@ export const appointmentRouter = router({
         }
       }
 
-      const fromStatus = appointment.status;
-      const { toStatus } = input;
-
-      if (fromStatus === toStatus) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Appointment is already in ${toStatus} status.`,
+      // Execute state machine transition
+      try {
+        return await transitionStatus({
+          appointmentId: input.appointmentId,
+          targetStatus: input.toStatus,
+          userId: user.id,
+          cancellationReason: input.cancellationReason,
+          prisma: ctx.prisma,
         });
+      } catch (err: any) {
+        if (
+          err instanceof InvalidStatusTransitionError ||
+          err instanceof EarlyNoShowError ||
+          err instanceof CancellationReasonRequiredError ||
+          err instanceof CancellationBlockedError
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: err.message,
+            cause: err,
+          });
+        }
+        throw err;
       }
+    }),
 
-      // Terminal state check
-      if (fromStatus === "COMPLETED" || fromStatus === "NO_SHOW" || fromStatus === "CANCELLED") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Cannot transition an appointment from terminal status ${fromStatus}.`,
-        });
-      }
+  transitionStatus: protectedProcedure
+    .input(
+      z.object({
+        appointmentId: z.string(),
+        targetStatus: z.nativeEnum(AppointmentStatus),
+        cancellationReason: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = ctx.session.user;
 
-      // --- Rule Enforcement as specified in Goal 4 ---
-
-      // 1. Cancellation rules:
-      // "Cancellation is permitted only before check-in and must include a reason — once a patient has checked in, the appointment can no longer be cancelled."
-      if (toStatus === "CANCELLED") {
-        if (fromStatus === "CHECKED_IN") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Cancellation is not permitted once a patient has checked in.",
-          });
-        }
-        if (!input.cancellationReason || input.cancellationReason.trim() === "") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "A cancellation reason must be provided.",
-          });
-        }
-      }
-
-      // 2. No Show rules:
-      // "It can be marked No Show only from Confirmed, and only after the slot's scheduled time has passed."
-      else if (toStatus === "NO_SHOW") {
-        if (fromStatus !== "CONFIRMED") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "An appointment can only be marked as No Show from Confirmed status.",
-          });
-        }
-        const scheduledTime = getSlotScheduledDateTime(
-          appointment.slot.date,
-          appointment.slot.startTime
-        );
-        const now = new Date();
-        if (now <= scheduledTime) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Cannot mark as No Show before the scheduled appointment time (${scheduledTime.toLocaleString()}).`,
-          });
-        }
-      }
-
-      // 3. Standard progression: Requested -> Confirmed -> Checked In -> Completed
-      else if (toStatus === "CONFIRMED") {
-        if (fromStatus !== "REQUESTED") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Cannot confirm appointment from ${fromStatus} status. Progression requires Requested -> Confirmed.`,
-          });
-        }
-      } else if (toStatus === "CHECKED_IN") {
-        if (fromStatus !== "CONFIRMED") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Cannot check in patient from ${fromStatus} status. Progression requires Confirmed -> Checked In.`,
-          });
-        }
-      } else if (toStatus === "COMPLETED") {
-        if (fromStatus !== "CHECKED_IN") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Cannot complete appointment from ${fromStatus} status. Progression requires Checked In -> Completed.`,
-          });
-        }
-      } else {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Illegal status transition from ${fromStatus} to ${toStatus}.`,
-        });
-      }
-
-      // Execute update and append to StatusHistory
-      return ctx.prisma.$transaction(async (tx) => {
-        const updated = await tx.appointment.update({
-          where: { id: input.appointmentId },
-          data: {
-            status: toStatus,
-            cancellationReason:
-              toStatus === "CANCELLED" ? input.cancellationReason : appointment.cancellationReason,
+      const appointment = await ctx.prisma.appointment.findUnique({
+        where: { id: input.appointmentId },
+        include: {
+          slot: true,
+          supportingProviders: {
+            where: { unassignedAt: null },
           },
-        });
-
-        await tx.statusHistory.create({
-          data: {
-            appointmentId: input.appointmentId,
-            fromStatus,
-            toStatus,
-            changedByUserId: user.id,
-            reason: toStatus === "CANCELLED" ? input.cancellationReason : null,
-          },
-        });
-
-        return updated;
+        },
       });
+
+      if (!appointment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Appointment not found.",
+        });
+      }
+
+      // RBAC: FRONT_DESK can confirm/cancel any appointment.
+      // PROVIDER can only act on their own schedule (as scheduling or supporting provider).
+      if (user.role === "PROVIDER") {
+        const isScheduling = appointment.schedulingProviderId === user.id;
+        const isSupporting = appointment.supportingProviders.some(
+          (sp) => sp.providerId === user.id
+        );
+        if (!isScheduling && !isSupporting) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              "Access restricted: Providers can only see and act on their own schedule (as scheduling or supporting provider).",
+          });
+        }
+      }
+
+      try {
+        return await transitionStatus({
+          appointmentId: input.appointmentId,
+          targetStatus: input.targetStatus,
+          userId: user.id,
+          cancellationReason: input.cancellationReason,
+          prisma: ctx.prisma,
+        });
+      } catch (err: any) {
+        if (
+          err instanceof InvalidStatusTransitionError ||
+          err instanceof EarlyNoShowError ||
+          err instanceof CancellationReasonRequiredError ||
+          err instanceof CancellationBlockedError
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: err.message,
+            cause: err,
+          });
+        }
+        throw err;
+      }
+    }),
+
+  getLegalActions: protectedProcedure
+    .input(z.object({ appointmentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const appointment = await ctx.prisma.appointment.findUnique({
+        where: { id: input.appointmentId },
+        include: { slot: true },
+      });
+
+      if (!appointment) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Appointment not found." });
+      }
+
+      const scheduledTime = getSlotScheduledDateTime(
+        appointment.slot.date,
+        appointment.slot.startTime
+      );
+      const now = new Date();
+      const isPastScheduled = now.getTime() > scheduledTime.getTime();
+
+      const legalTargets = LEGAL_TRANSITIONS_MAP[appointment.status] || [];
+
+      return {
+        currentStatus: appointment.status,
+        legalTargets,
+        scheduledTime,
+        now,
+        isPastScheduled,
+        canNoShow: appointment.status === "CONFIRMED" && isPastScheduled,
+        isEarlyForNoShow: appointment.status === "CONFIRMED" && !isPastScheduled,
+        canCancel: appointment.status === "REQUESTED" || appointment.status === "CONFIRMED",
+      };
     }),
 
   reassign: protectedProcedure

@@ -25,6 +25,9 @@ export default function HomePage() {
   const [showCreateSlotModal, setShowCreateSlotModal] = useState(false);
   const [editingPatientAppt, setEditingPatientAppt] = useState<any | null>(null);
   const [reassigningAppt, setReassigningAppt] = useState<any | null>(null);
+  const [cancellingAppt, setCancellingAppt] = useState<any | null>(null);
+  const [cancellationReasonInput, setCancellationReasonInput] = useState("");
+  const [cancelModalError, setCancelModalError] = useState<string | null>(null);
 
   // Filters for Schedule & Appointments
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -1329,6 +1332,80 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* MODAL 5B: REASON-REQUIRED CANCELLATION MODAL */}
+        {cancellingAppt && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.8)", backdropFilter: "blur(6px)", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+            <div className="glass-card animate-fade-in" style={{ width: "100%", maxWidth: "480px", padding: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--alert-red)" }}>Cancel Appointment</h3>
+                <button onClick={() => setCancellingAppt(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                Cancelling appointment for <strong>{cancellingAppt.patientName}</strong> ({format(new Date(cancellingAppt.slot.date), "MMM d")} at {cancellingAppt.slot.startTime}).
+                Cancellation is permitted only before check-in and requires an explicit, non-empty cancellation reason.
+              </p>
+
+              {cancelModalError && (
+                <div style={{ background: "var(--alert-red-bg)", border: "1px solid rgba(244,63,94,0.4)", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)", color: "var(--alert-red)", fontSize: "0.8rem", marginBottom: "1rem" }}>
+                  {cancelModalError}
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!cancellationReasonInput.trim()) {
+                    setCancelModalError("A non-empty cancellation reason must be provided.");
+                    return;
+                  }
+                  updateStatusMutation.mutate({
+                    appointmentId: cancellingAppt.id,
+                    toStatus: "CANCELLED",
+                    cancellationReason: cancellationReasonInput.trim(),
+                  });
+                  setCancellingAppt(null);
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                    Cancellation Reason <span style={{ color: "var(--alert-red)" }}>*</span>
+                  </label>
+                  <textarea
+                    className="input-field"
+                    rows={3}
+                    placeholder="e.g. Patient called to cancel due to severe acute illness / schedule conflict..."
+                    value={cancellationReasonInput}
+                    onChange={(e) => {
+                      setCancellationReasonInput(e.target.value);
+                      if (cancelModalError) setCancelModalError(null);
+                    }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setCancellingAppt(null)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Keep Appointment
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-danger btn-sm"
+                    disabled={updateStatusMutation.isLoading}
+                  >
+                    {updateStatusMutation.isLoading ? "Cancelling..." : "Confirm Cancellation"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* MODAL 6: APPOINTMENT DETAILS, STATUS ACTIONS & TIMELINE */}
         {selectedAppointmentId && appointmentDetail && (
           <div
@@ -1387,62 +1464,120 @@ export default function HomePage() {
                   </span>
                 </div>
 
-                {/* State Machine Transition Actions */}
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  {appointmentDetail.status === "REQUESTED" && (
-                    <button
-                      onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CONFIRMED" })}
-                      className="btn btn-primary btn-sm"
-                    >
-                      Confirm Appointment
-                    </button>
-                  )}
+                {/* State Machine Transition Actions (One step forward only + Guards) */}
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {(() => {
+                    const status = appointmentDetail.status;
+                    const [slotH, slotM] = appointmentDetail.slot.startTime.split(":").map(Number);
+                    const scheduledTime = new Date(appointmentDetail.slot.date);
+                    scheduledTime.setHours(slotH, slotM, 0, 0);
+                    const now = new Date();
+                    const isPastScheduled = now.getTime() > scheduledTime.getTime();
 
-                  {appointmentDetail.status === "CONFIRMED" && (
-                    <>
-                      <button
-                        onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CHECKED_IN" })}
-                        className="btn btn-primary btn-sm"
-                      >
-                        Check In Patient
-                      </button>
-                      <button
-                        onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "NO_SHOW" })}
-                        className="btn btn-danger btn-sm"
-                      >
-                        Mark No Show
-                      </button>
-                    </>
-                  )}
+                    if (status === "REQUESTED") {
+                      return (
+                        <>
+                          <button
+                            onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CONFIRMED" })}
+                            className="btn btn-primary btn-sm"
+                            disabled={updateStatusMutation.isLoading}
+                          >
+                            Confirm Appointment (→ Confirmed)
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCancellingAppt(appointmentDetail);
+                              setCancellationReasonInput("");
+                              setCancelModalError(null);
+                            }}
+                            className="btn btn-secondary btn-sm"
+                            style={{ color: "var(--alert-red)" }}
+                          >
+                            Cancel Appointment...
+                          </button>
+                        </>
+                      );
+                    }
 
-                  {appointmentDetail.status === "CHECKED_IN" && (
-                    <button
-                      onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "COMPLETED" })}
-                      className="btn btn-primary btn-sm"
-                    >
-                      Complete Visit
-                    </button>
-                  )}
+                    if (status === "CONFIRMED") {
+                      return (
+                        <>
+                          <button
+                            onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "CHECKED_IN" })}
+                            className="btn btn-primary btn-sm"
+                            disabled={updateStatusMutation.isLoading}
+                          >
+                            Check In Patient (→ Checked In)
+                          </button>
 
-                  {/* Cancel allowed only before check-in and requires reason */}
-                  {appointmentDetail.status !== "CHECKED_IN" && appointmentDetail.status !== "COMPLETED" && appointmentDetail.status !== "NO_SHOW" && appointmentDetail.status !== "CANCELLED" && (
-                    <button
-                      onClick={() => {
-                        const reason = prompt("Please provide a reason for cancellation (required):");
-                        if (reason) {
-                          updateStatusMutation.mutate({
-                            appointmentId: appointmentDetail.id,
-                            toStatus: "CANCELLED",
-                            cancellationReason: reason,
-                          });
-                        }
-                      }}
-                      className="btn btn-secondary btn-sm"
-                      style={{ color: "var(--alert-red)" }}
-                    >
-                      Cancel Appointment...
-                    </button>
-                  )}
+                          {/* No Show: Reachable only from CONFIRMED and only if scheduledStartTime < now */}
+                          {isPastScheduled ? (
+                            <button
+                              onClick={() => {
+                                if (confirm("Mark this patient as No Show? This records a missed appointment.")) {
+                                  updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "NO_SHOW" });
+                                }
+                              }}
+                              className="btn btn-danger btn-sm"
+                              disabled={updateStatusMutation.isLoading}
+                            >
+                              Mark No Show
+                            </button>
+                          ) : (
+                            <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start" }}>
+                              <button
+                                disabled
+                                className="btn btn-secondary btn-sm"
+                                style={{ opacity: 0.45, cursor: "not-allowed" }}
+                                title={`Cannot mark as No Show before scheduled time (${appointmentDetail.slot.startTime}). Current time is before start time.`}
+                              >
+                                Mark No Show (Locked)
+                              </button>
+                              <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                                🔒 Unlocks after {appointmentDetail.slot.startTime}
+                              </span>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setCancellingAppt(appointmentDetail);
+                              setCancellationReasonInput("");
+                              setCancelModalError(null);
+                            }}
+                            className="btn btn-secondary btn-sm"
+                            style={{ color: "var(--alert-red)" }}
+                          >
+                            Cancel Appointment...
+                          </button>
+                        </>
+                      );
+                    }
+
+                    if (status === "CHECKED_IN") {
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <button
+                            onClick={() => updateStatusMutation.mutate({ appointmentId: appointmentDetail.id, toStatus: "COMPLETED" })}
+                            className="btn btn-primary btn-sm"
+                            disabled={updateStatusMutation.isLoading}
+                          >
+                            Complete Visit (→ Completed)
+                          </button>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                            (Patient checked in — Cancellation blocked)
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    // Terminal states: COMPLETED, NO_SHOW, CANCELLED
+                    return (
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                        Terminal State — No further transitions permitted.
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 
