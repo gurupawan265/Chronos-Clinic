@@ -1,191 +1,264 @@
-# Assignment 06 — Clinic Appointment Scheduling
+# 🩺 Chronos Clinic — Multi-Provider Appointment Scheduling & Care Coordination OS
 
-## The scenario
+[![Next.js](https://img.shields.io/badge/Next.js-14.2-black?style=flat&logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-18.3-blue?style=flat&logo=react)](https://reactjs.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38bdf8?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![tRPC](https://img.shields.io/badge/tRPC-v10-2596be?style=flat&logo=trpc)](https://trpc.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-5.19-2D3748?style=flat&logo=prisma)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
+[![NextAuth.js](https://img.shields.io/badge/NextAuth-v4-purple?style=flat&logo=nextauth)](https://next-auth.js.org/)
 
-Picture a small multi-provider clinic — a physical therapy practice, a dental office — booking
-patient appointments across several providers, currently coordinated by a front desk working from a
-paper day-sheet and a shared calendar nobody outside the office can see.
-
-The result is predictable. Two patients are told the same slot is open, and one of them shows up to
-a double-booking that could have been caught in advance. A provider's Thursday afternoon quietly
-empties out because three patients in a row never confirmed and never showed, and nobody flagged it
-until it was too late to fill the time. Asking how full tomorrow is means someone physically
-counting boxes on a printed sheet.
-
-They want one system where front-desk staff manage availability and bookings, providers see their
-own day and log what happened at each visit, and appointments that are drifting toward a no-show get
-flagged before the slot is wasted. That is the system you are building.
-
-## What it must do
-
-Everything below is required. Several of the ten spell out exact rules — what happens on an illegal
-move, what a bulk action must report back, when a dismissed alert is allowed to reappear — and those
-specifics are the actual ask, not just the bold headline in front of them.
-
-1. **Accounts and roles.** People sign in with an email and password, and there are at least two
-roles — a front-desk role and a provider role. Front-desk staff can create availability slots for
-any provider, confirm or cancel any appointment, and reassign appointments between providers.
-Providers can only see and act on their own schedule, and cannot create slots for another provider
-or reassign an appointment away from themselves. The difference must be enforced on the server, not
-just hidden in the interface.
-
-2. **Appointment slots.** Front-desk staff and providers create appointment slots with a provider, a
-date, a start time and a duration, and can edit them while unbooked. Once a patient requests a slot,
-that same record becomes an appointment, tracked through the states described below. Slots can be
-archived and restored. Archiving removes a slot from the schedule without destroying the history of
-one that has already become an appointment.
-
-3. **Visit notes.** Every visit note belongs to exactly one appointment and records the provider's
-observations from that visit as free text. Visit notes can be added and edited by the provider who
-wrote them. Opening an appointment shows all of its visit notes in order.
-
-4. **Appointment status.** An appointment moves *Requested → Confirmed → Checked In → Completed*. It
-can be marked *No Show* only from Confirmed, and only after the slot's scheduled time has passed.
-Cancellation is permitted only before check-in and must include a reason — once a patient has
-checked in, the appointment can no longer be cancelled. Any other move must be rejected by the
-server with a message explaining why.
-
-5. **Care team.** An appointment has one scheduling provider, but any number of other providers can
-be added to it as supporting providers, and a provider can be added this way to any number of
-appointments. Every provider can see one list of every appointment where they are the scheduling
-provider or added as a supporting provider.
-
-6. **Finding appointments.** One list shows appointments with a text search over patient name,
-filters for provider, status and date range, sorting by date and time, status or provider, and
-pagination showing the total number of matches. All of this must happen on the server — do not load
-every appointment into the browser and filter there.
-
-7. **Bulk availability generation.** Front-desk staff can generate a recurring pattern of
-availability slots for a provider across a date range in one action — the same weekly time blocks
-repeated for two months, for example. The result must report which slots were created and which were
-skipped because they collided with an existing booking. Separately, export a single day's schedule
-as a CSV file.
-
-8. **A dashboard.** A landing view shows headline numbers — appointments today, patients checked in
-right now, no-shows this week, confirmed appointments upcoming. It also breaks appointments down by
-provider and by status, and charts no-show rate per week over the last eight weeks.
-
-9. **History you cannot rewrite.** Every appointment has a timeline showing every status change with
-the old and new status and who made it, every supporting-provider assignment and unassignment, every
-cancellation with its reason, and every visit note added, with its author and the time it was
-written. Nothing in this timeline can be edited or deleted after the fact, including by front-desk
-staff.
-
-10. **Unconfirmed alerts.** Any appointment still in Requested status within 24 hours of its
-scheduled time appears in an alerts area, with a count badge visible to front-desk staff. A
-front-desk staff member can dismiss an alert. If the appointment is still unconfirmed an hour before
-its scheduled time, the alert reappears regardless of the earlier dismissal.
-
-## Stretch ideas (optional)
-
-None of these are required, and none substitute for a goal above. If you finish all ten with time
-left over, pick whichever of these sounds most useful and build it:
-
-- Automated reminder messages before an appointment.
-- Recurring appointments for ongoing treatment plans.
-- A patient-facing self-service booking view.
-- A waitlist for fully booked days.
-- Per-visit-type default durations.
-- Room or equipment assignment alongside provider.
-- A printable day sheet for the front desk.
-- Billing notes per visit.
-- An email digest of tomorrow's unconfirmed appointments.
-
+An integrated, clinical-grade scheduling system engineered for multi-provider healthcare practices (physical therapy, sports medicine, rehabilitation, orthopedics). Chronos Clinic eliminates double-bookings with database-level isolation, prevents no-shows with proactive urgency-sorted alerting, strictly enforces medical state-machine transitions, and delivers an authentic high-density day-view time-grid.
 
 ---
 
-## What we are assessing
+## 🌟 Key Capabilities & User Experience
 
-A working application is table stakes. Almost every serious candidate will produce something that runs, has a login, and roughly does what was asked. That's the floor, not the differentiator.
+### 1. 📅 Day-View Schedule Grid (The Centerpiece)
+- **Front-Desk "All Providers" Grid**: Side-by-side vertical columns for every clinic provider with an aligned 30-minute time gutter (08:00 to 18:00). Horizontal scrolling maintains sticky provider headers and sticky time labels.
+- **Provider "My Schedule" View**: Dedicated single-column agenda timeline for individual clinicians, clearly differentiating appointments where they are the **Lead Scheduling Clinician** versus a **Supporting Care Team Member**.
+- **Visually Distinct Slot States**:
+  - **Booked Slots**: Solid clinical cards featuring a 4px left-border colored by status, patient name, contact info, duration, and direct status badges. Clicking any booked slot immediately opens the detail drawer.
+  - **Available / Open Slots**: Visually distinct dashed borders (`border-2 border-dashed border-slate-700 bg-slate-900/25 hover:border-indigo-500`), green pulsing indicator, and a 1-click **"+ Book"** action.
+  - **Archived Slots**: Muted, strikethrough styling with instant 1-click restoration.
+  - **Empty Grid Cells**: Interactive hover action to instantly create a new availability slot at that exact provider and time.
+- **Scheduling Controls**: Day navigation (`◀ Prev`, `Today`, `Next ▶`), interactive date picker, provider filter dropdown, real-time occupancy metric, and single-day **CSV Export**.
 
-What actually separates submissions is the record of thinking behind the app: the decisions you made and why, the trade-offs you weighed, what you built first and what you deliberately left out, and whether you can explain any part of your own system when asked. We are hiring for judgement. The app is the evidence for that judgement, not the deliverable in itself.
+### 2. 🎨 Direct Color-Coded Status Badges
+Status is rendered directly on every slot block, detail panel, and directory row with distinct, high-contrast tokens:
+- 🟡 **Requested**: Amber border, amber background tint, pulsing amber dot.
+- 🔵 **Confirmed**: Blue border, blue background tint, solid blue dot.
+- 🟢 **Checked In**: Emerald border, emerald background tint, pulsing live-in-clinic dot.
+- 🟣 **Completed**: Violet border, violet background tint, check indicator.
+- 🔴 **No Show**: Rose/Red border, rose background tint, alert dot.
+- ⚪ **Cancelled**: Neutral slate border, slate background tint, muted dot.
 
-We also read the code itself for structure and readability, which counts for a small share of the overall score.
+### 3. 📑 Slide-Over Appointment Detail Drawer
+- **Non-Intrusive Workflow**: Slides in from the right edge (`fixed inset-y-0 right-0 max-w-xl`) over a semi-transparent backdrop so front-desk coordinators can act on bookings without losing the day-grid view underneath.
+- **State Machine Action Toolbar**: One-click transition buttons enforced by server-side guards (e.g., No Show lockout before scheduled start time).
+- **Care Team Management**: Primary scheduling clinician card + supporting clinician assignments with instant add/remove controls.
+- **Visual Separation of Clinical Notes vs. Audit Timeline**:
+  - **Clinical Documentation Tab**: Dedicated clinical view with physician badges, timestamps, formatted observations, and authoring textarea for licensed providers.
+  - **Unified Audit Timeline Tab**: Authentic vertical event feed with a connected vertical track, event nodes, actor attribution, and permanent record timestamps.
 
-## Time budget
+### 4. ⚠️ Urgency-Sorted Dismissible Alerts Banner
+- Flags unconfirmed (`REQUESTED`) appointments scheduled within 24 hours.
+- **Urgency Sorting**: Strict order by closest scheduled start time first (`in 15 mins`, `in 2 hours`, `past due`).
+- **Dismissal & Reappearance Engine**: Front desk can dismiss alerts to reduce noise. However, if the visit remains unconfirmed within **1 hour of start time**, the alert **automatically reappears** with an urgent glowing `REAPPEARED (<1h rule)` badge.
 
-Budget about 12 hours total, spent roughly 2 hours a day across a week.
+### 5. 📊 Dashboard Analytics & 8-Week No-Show Chart
+- **Headline Stat Cards**: Appointments Today, Patients Checked In Right Now, No-Shows This Week, Confirmed Upcoming.
+- **8-Week No-Show Trend Chart**: Visual weekly bar chart tracking unattended rates over time, with elevated rates (>20%) highlighted in rose.
+- **Appointments Directory**: Search by patient name, multi-column sorting, provider/status/date filtering, and server-side offset pagination.
+- **Bulk Availability Generator**: Automated recurring slot creator across date ranges and days of the week, reporting created slots vs. colliding skipped slots.
 
-This is not a race. We are not timing you against other candidates, and submitting early scores nothing extra. Twelve hours is a size guide so you know how much to attempt — pace yourself, stop when you're tired, and spend some of that time thinking and documenting, not only typing code.
+---
 
-## Pick any stack you like
+## 🔒 Clinical State Machine & Transition Rules
 
-Use any language, any framework, any UI library, any ORM, and any database access approach you want. We have no house stack, and no stack scores better than another — this round is not a test of whether you know particular tools.
+Chronos Clinic enforces a strict, server-side appointment state machine ([`appointmentStateMachine.ts`](file:///c:/Users/vijay/Desktop/ClickPlus/src/server/appointmentStateMachine.ts)):
 
-Use whatever you are fastest and most confident in. Time spent learning something new to impress us is time not spent on the ten goals above, and it will show.
+```mermaid
+stateDiagram-v2
+    [*] --> REQUESTED: Patient books unreserved slot
+    REQUESTED --> CONFIRMED: Front Desk confirms visit
+    CONFIRMED --> CHECKED_IN: Patient arrives in clinic
+    CHECKED_IN --> COMPLETED: Clinician finishes consultation
+    
+    CONFIRMED --> NO_SHOW: Patient fails to arrive (Unlocked only after scheduled start time)
+    
+    REQUESTED --> CANCELLED: Cancel with mandatory reason
+    CONFIRMED --> CANCELLED: Cancel with mandatory reason
+    
+    CHECKED_IN --> CANCELLED: BLOCKED (Patient already in clinic)
+    
+    COMPLETED --> [*]
+    NO_SHOW --> [*]
+    CANCELLED --> [*]
+```
 
-## Using AI is allowed and encouraged
+### Safety Guards Enforced on the Server:
+1. **Strict Forward Progression**: Progression occurs one step forward only (`REQUESTED` → `CONFIRMED` → `CHECKED_IN` → `COMPLETED`). Skipping steps (e.g. `REQUESTED` directly to `CHECKED_IN`) is rejected with `InvalidStatusTransitionError`.
+2. **Early No-Show Lockout Guard**: An appointment can **only** be marked `NO_SHOW` from `CONFIRMED` **after** the slot's scheduled start time has passed. Premature marking is blocked with `EarlyNoShowError`.
+3. **Mandatory Cancellation Reason**: Any cancellation requires a non-empty audit reason (`CancellationReasonRequiredError`).
+4. **Cancellation Blocked Post-Check-In**: Once a patient has checked in to the clinic (`CHECKED_IN`), the appointment can no longer be cancelled (`CancellationBlockedError`).
+5. **Terminal State Immutability**: `COMPLETED`, `NO_SHOW`, and `CANCELLED` are terminal states; no further transitions are permitted.
 
-Use AI tools however you want — to scaffold code, debug a stuck problem, write tests, draft documentation, or anything else that helps you move faster. A few things to know about how we treat it:
+---
 
-- We do not penalise AI use, and we make no attempt to detect it.
-- We care about whether you understood, directed and verified the output — not about who or what produced the first draft of it.
-- `docs/ai-prompts.md` must contain the prompts you actually used, including the ones that produced bad output and what you changed afterwards. If you used no AI at all, say so here and describe how you worked instead — that is assessed the same way.
-- Submitting generated code you cannot explain is the single most common way candidates fail this round.
+## 🏛️ System Architecture
 
-You are accountable for everything in your submission. If a reviewer points at a piece of code and asks why it's there, or why it works the way it does, "the AI wrote it" is not an answer.
+```mermaid
+flowchart TD
+    Client["Next.js 14 Client Components (React 18 + Tailwind CSS)"]
+    API["Next.js App Router API Routes (/api/trpc)"]
+    Auth["NextAuth.js (JWT Session with Role-Based Guard)"]
+    TRPC["tRPC v10 Router Procedures"]
+    Guard["Server Middleware: frontDeskProcedure / protectedProcedure"]
+    StateMachine["Clinical State Machine & Guard Validator"]
+    Prisma["Prisma ORM Client"]
+    DB[("PostgreSQL Database (Supabase IPv4 Pooler)")]
 
-## Use git properly
+    Client -->|Type-safe RPC| API
+    API --> TRPC
+    TRPC --> Auth
+    TRPC --> Guard
+    Guard --> StateMachine
+    StateMachine --> Prisma
+    Prisma --> DB
+```
 
-Publish to a public GitHub repository, and commit incrementally as the work actually happens — after each meaningful step, not in one pass at the end.
+---
 
-A repository whose entire history is a single "initial commit" containing a finished app scores zero on git history, and it colours how we read everything else in your submission, however good the app itself is. Your history is how we see the order you built in, where you got stuck, and how the design changed along the way. If it isn't there, we can't assess it, and we won't assume the best.
+## 👥 Demo Accounts & Credentials
 
-## What you must commit
+All demo accounts share the password: `password123`
 
-Alongside your code, commit these five files under `docs/`. Your zip includes a stub for each with the questions it needs to answer — fill them in as you go, not from memory at the end.
+| Role | Name | Email | Password | Permissions & Notes |
+|---|---|---|---|---|
+| **Front Desk** | Alex Rivera | `alex.frontdesk@clinic.com` | `password123` | Full clinic coordination, multi-provider grid, slot creation for all doctors, reassignments, alert dismissals |
+| **Front Desk** | Jordan Taylor | `jordan.frontdesk@clinic.com` | `password123` | Secondary front desk coordinator |
+| **Provider** | Dr. Alex Smith | `dr.smith@clinic.com` | `password123` | Physical Therapy — My Schedule view, clinical visit note authoring |
+| **Provider** | Dr. Jordan Jones | `dr.jones@clinic.com` | `password123` | Sports Medicine — My Schedule view, clinical visit note authoring |
+| **Provider** | Dr. Priya Patel | `dr.patel@clinic.com` | `password123` | Rehabilitation Medicine |
+| **Provider** | Dr. David Lee | `dr.lee@clinic.com` | `password123` | Orthopedic Surgery |
 
-| File | What it must answer |
-|------|----------------------|
-| `docs/architecture.md` | What the moving pieces are, how they talk to each other, where each one runs, the request path for one representative user action end to end, and what you decided not to build. |
-| `docs/schema.md` | Every table's columns and types, which relationships are one-to-many versus many-to-many, which constraints live in the database versus the application, what you deliberately denormalised, and what would break first at 100x the data. |
-| `docs/plan.md` | How you split the work into sessions, what order you built in and why, what you estimated versus what it actually took, and what you cut when you ran short. |
-| `docs/decisions.md` | At least five real decisions — what you chose, what you rejected, and why — including at least one you later reversed. |
-| `docs/ai-prompts.md` | The prompts you actually used, in order, grouped by what you were trying to do, including at least one that produced something wrong and what you did about it. |
+---
 
-## Host it for free
+## 🚀 Quick Start & Local Setup
 
-Deploy the whole thing somewhere reachable by URL, using free tiers only.
+### Prerequisites
+- Node.js 18.17+ or Node.js 20+
+- PostgreSQL database (local or cloud-hosted via Neon/Supabase)
 
-One combination that works, if you would rather not decide:
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/gurupawan265/Chronos-Clinic.git
+cd Chronos-Clinic
+npm install
+```
 
-- **Database** — a managed service such as Supabase.
-- **Server-side code** — Render.
-- **Browser-side code** — Vercel.
+### 2. Environment Configuration
+Create a `.env` file in the root directory (or copy from `.env.example`):
+```env
+DATABASE_URL="postgresql://username:password@localhost:5432/chronos_clinic?sslmode=prefer"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-super-secret-random-jwt-key-here"
+```
 
-Deploy in that order: create the database first, give the server its connection details as environment variables, then point the browser-side part at the server's public URL.
+### 3. Database Migration & Seed
+Run Prisma database sync and seed with realistic clinical demo data (providers, front desk staff, multi-day availability slots, appointments across all lifecycle states, clinical visit notes, and audit histories):
+```bash
+npx prisma db push
+npm run prisma:seed
+```
 
-This is one option, not a requirement. Any free host is equally acceptable — everything on a single provider, one virtual machine, a container platform, a static host with serverless functions. The choice earns and loses nothing.
+### 4. Start Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser. Use any demo credential above to log in.
 
-Requirements:
+---
 
-- A working live URL.
-- Seeded with enough demo data to show the system doing something, not an empty shell.
-- Demo credentials for every role recorded in `SUBMISSION.md`.
-- Connection strings, keys and passwords kept in environment variables, never in the repository.
-- Free tiers often sleep when idle and can take a minute or more to wake. Note it in `SUBMISSION.md` if yours does, so a slow first load is not read as a broken deployment.
-- If you cannot get it hosted, submit anyway and record in `SUBMISSION.md` what you tried and where it broke.
+## 🧪 Automated Verification & Test Suite
 
-## How to submit
+Chronos Clinic includes an automated test runner verifying all 10 clinical transition rules, state progression limits, role guards, and error exceptions:
 
-Send us:
+```bash
+# Run the automated state machine test suite
+npx tsx scripts/test-rules.ts
+```
 
-- The URL of your public GitHub repository.
-- The URL of your live, deployed application.
-- Your completed `SUBMISSION.md`, committed to the repository.
+### Expected Output:
+```text
+==================================================
+RUNNING AUTOMATED VERIFICATION FOR CLINIC RULES
+==================================================
+✔ [Pass] REQUESTED -> CONFIRMED
+✔ [Pass] CONFIRMED -> CHECKED_IN
+✔ [Pass] CHECKED_IN -> COMPLETED
+✔ [Pass] REQUESTED -> CHECKED_IN blocked with InvalidStatusTransitionError
+✔ [Pass] Early No-Show blocked with EarlyNoShowError
+✔ [Pass] Past No-Show permitted from CONFIRMED
+✔ [Pass] Empty reason cancellation blocked with CancellationReasonRequiredError
+✔ [Pass] Cancellation before check-in with reason permitted
+✔ [Pass] Cancellation after CHECKED_IN blocked with CancellationBlockedError
+✔ [Pass] Transition from terminal state COMPLETED blocked
+✔ [Pass] Transition from terminal state NO_SHOW blocked
+✔ [Pass] Transition from terminal state CANCELLED blocked
+==================================================
+ALL CLINICAL TRANSITION RULES ARE 100% VERIFIED!
+==================================================
+```
 
-That's the whole submission. Nothing else to prepare, no separate form.
+### Type Safety Verification:
+```bash
+npx tsc --noEmit
+```
 
-## What happens next
+---
 
-If your submission clears the bar, we'll set up a short call. We will ask about specific decisions we can see in your repository and its history — why you modelled something a particular way, what a certain commit was fixing, what you'd change if you kept going.
+## 📁 Repository Structure
 
-We're telling you this now because it should change how carefully you document as you go. Write `docs/decisions.md` for a version of yourself who has to explain it three weeks from now.
+```text
+Chronos-Clinic/
+├── docs/                           # Architecture, Schema & Design Decision docs
+│   ├── architecture.md             # Moving parts, data flow, and trade-offs
+│   ├── schema.md                   # Relational models, constraints, and indexes
+│   ├── decisions.md                # 5 core architectural decisions weighed
+│   ├── plan.md                     # Implementation milestones and pacing
+│   └── ai-prompts.md               # Record of prompt iterations and refinements
+├── prisma/
+│   ├── schema.prisma               # Prisma relational schema with compound indexes
+│   └── seed.ts                     # Comprehensive clinical seed script
+├── scripts/
+│   └── test-rules.ts               # Automated CLI verification suite for clinic rules
+├── src/
+│   ├── app/
+│   │   ├── api/                    # NextAuth & tRPC HTTP handlers
+│   │   ├── login/page.tsx          # Login page with one-click demo credentials
+│   │   ├── layout.tsx              # Root layout with font imports & glow mesh
+│   │   ├── page.tsx                # Main application page
+│   │   └── globals.css             # Tailwind directives & clinical design tokens
+│   ├── components/                 # Modular scheduling UI components
+│   │   ├── DayScheduleGrid.tsx     # Centerpiece multi-provider time-grid
+│   │   ├── AppointmentDetailDrawer.tsx # Slide-over side panel drawer
+│   │   ├── StatusBadge.tsx         # Color-coded clinical status badges
+│   │   ├── AlertsBanner.tsx        # Urgency-sorted dismissible alerts list
+│   │   ├── StatCards.tsx           # Dashboard headline metric cards
+│   │   ├── AnalyticsDashboard.tsx  # 8-week no-show trend chart & breakdowns
+│   │   ├── AppointmentsDirectory.tsx # Searchable, sortable appointments table
+│   │   ├── BulkAvailabilityGenerator.tsx # Recurring slot generation tool
+│   │   ├── Modals.tsx              # Clean dialog modals (Book, Create, Cancel)
+│   │   └── Navbar.tsx              # Top navigation bar & session profile
+│   ├── server/
+│   │   ├── appointmentStateMachine.ts # Strict state machine validator & error classes
+│   │   ├── auth.ts                 # NextAuth credentials provider configuration
+│   │   ├── db.ts                   # Prisma client singleton
+│   │   └── trpc/                   # tRPC context, middleware & sub-routers
+│   │       ├── routers/
+│   │       │   ├── alert.ts        # Unconfirmed alerts query & dismissal engine
+│   │       │   ├── appointment.ts  # Appointments query, mutations & state transitions
+│   │       │   ├── dashboard.ts    # Real-time metrics & 8-week trend aggregations
+│   │       │   ├── slot.ts         # Slot availability, bulk generator, day CSV export
+│   │       │   └── visitNote.ts    # Clinical observations authoring
+└── SUBMISSION.md                   # Candidate submission summary and reflections
+```
 
-## Scope
+---
 
-The 10 goals stated in this brief are the cutoff. Meet all 10, solidly, and you have a complete submission.
+## 📖 In-Depth Documentation
 
-Stretch ideas are optional. They exist for candidates who finish the 10 with time left and want to keep building — they are never required, and they do not make up for a goal you didn't hit. Doing 8 goals well beats doing 10 goals badly. If time is short, finish fewer goals properly rather than leaving all ten half-done.
-#   C h r o n o s - C l i n i c  
- 
+For thorough technical documentation, refer to the files in the `docs/` folder:
+- **[Architecture Guide](file:///c:/Users/vijay/Desktop/ClickPlus/docs/architecture.md)** — Architectural patterns, request paths, and security boundaries.
+- **[Database Schema Design](file:///c:/Users/vijay/Desktop/ClickPlus/docs/schema.md)** — Data dictionary, relational modeling, unique constraints, and scalability analysis.
+- **[Architectural Decisions](file:///c:/Users/vijay/Desktop/ClickPlus/docs/decisions.md)** — Analysis of 5 architectural trade-offs and decisions.
+- **[Development Plan](file:///c:/Users/vijay/Desktop/ClickPlus/docs/plan.md)** — Build milestones and timeline.
+- **[Submission Summary](file:///c:/Users/vijay/Desktop/ClickPlus/SUBMISSION.md)** — Goal checklist and reviewer guide.
+
+---
+
+## 📄 License
+This project is licensed under the MIT License.
