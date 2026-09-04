@@ -5,7 +5,7 @@ Fill this in and commit it. This is the first file we open.
 ## Links
 
 - **GitHub repository:** https://github.com/gurupawan265/Chronos-Clinic.git
-- **Live application:** <deployed URL>
+- **Live application:**https://chronos-clinic.vercel.app
 
 ## Notes for the reviewer
 
