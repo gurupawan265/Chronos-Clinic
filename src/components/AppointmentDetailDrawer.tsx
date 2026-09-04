@@ -171,52 +171,52 @@ export default function AppointmentDetailDrawer({
         className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 transition-opacity animate-fade-in"
       />
 
-      {/* 2. Side Panel / Drawer */}
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-slate-900/98 backdrop-blur-2xl border-l border-slate-800 shadow-2xl flex flex-col animate-slide-left">
+      {/* 2. Side Panel / Drawer with spacious layout */}
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-slate-900/98 backdrop-blur-2xl border-l border-slate-800 shadow-2xl flex flex-col animate-slide-left">
         {/* Drawer Header */}
-        <div className="p-5 border-b border-slate-800 flex items-start justify-between gap-4 bg-slate-950/60">
+        <div className="p-6 border-b border-slate-800 flex items-start justify-between gap-4 bg-slate-950/70">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs font-semibold text-slate-400">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="font-mono text-xs font-bold text-slate-400">
                 APPT-{appointment.id.slice(-6).toUpperCase()}
               </span>
               <StatusBadge status={appointment.status} size="sm" />
             </div>
-            <h2 className="text-xl font-extrabold text-white truncate">
+            <h2 className="text-2xl font-black text-white tracking-tight truncate">
               {appointment.patientName}
             </h2>
-            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-              <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3 text-slate-500" />
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5">
+              <span className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-slate-500" />
                 {appointment.patientContact}
               </span>
               <span>•</span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3 text-slate-500" />
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
                 {appointment.slot.startTime} ({appointment.slot.durationMinutes}m)
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => onOpenEditPatient(appointment)}
-              className="px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-all"
+              className="px-3 py-1.5 text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 hover:border-slate-600 transition-all active:scale-95 shadow-sm"
             >
               Edit Patient
             </button>
             {isFrontDesk && (
               <button
                 onClick={() => onOpenReassign(appointment)}
-                className="px-2.5 py-1 text-xs font-medium text-indigo-300 hover:text-white bg-indigo-950/80 hover:bg-indigo-900 rounded-lg border border-indigo-800/60 transition-all"
+                className="px-3 py-1.5 text-xs font-bold text-indigo-300 hover:text-white bg-indigo-950/90 hover:bg-indigo-900 rounded-xl border border-indigo-800/80 hover:border-indigo-600 transition-all active:scale-95 shadow-sm"
               >
                 Reassign...
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
-              title="Close Panel"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all active:scale-95"
+              title="Close Drawer"
             >
               <X className="w-5 h-5" />
             </button>

@@ -367,13 +367,13 @@ export default function HomePage() {
 
         {/* 3. Navigation Tabs: Centerpiece is Schedule */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 mb-6">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setActiveTab("schedule")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-2 ${
                 activeTab === "schedule"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
+                  : "bg-slate-900/90 hover:bg-slate-800/90 text-slate-300 hover:text-white border border-slate-800 hover:border-indigo-500/50 hover:shadow-sm active:scale-95"
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -384,10 +384,10 @@ export default function HomePage() {
 
             <button
               onClick={() => setActiveTab("appointments")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-2 ${
                 activeTab === "appointments"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
+                  : "bg-slate-900/90 hover:bg-slate-800/90 text-slate-300 hover:text-white border border-slate-800 hover:border-indigo-500/50 hover:shadow-sm active:scale-95"
               }`}
             >
               <List className="w-4 h-4" />
@@ -396,10 +396,10 @@ export default function HomePage() {
 
             <button
               onClick={() => setActiveTab("bulk")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-2 ${
                 activeTab === "bulk"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
+                  : "bg-slate-900/90 hover:bg-slate-800/90 text-slate-300 hover:text-white border border-slate-800 hover:border-indigo-500/50 hover:shadow-sm active:scale-95"
               }`}
             >
               <Sparkles className="w-4 h-4" />
@@ -408,10 +408,10 @@ export default function HomePage() {
 
             <button
               onClick={() => setActiveTab("analytics")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-2 ${
                 activeTab === "analytics"
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
+                  : "bg-slate-900/90 hover:bg-slate-800/90 text-slate-300 hover:text-white border border-slate-800 hover:border-indigo-500/50 hover:shadow-sm active:scale-95"
               }`}
             >
               <BarChart3 className="w-4 h-4" />
@@ -427,7 +427,7 @@ export default function HomePage() {
               });
               setShowCreateSlotModal(true);
             }}
-            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition-all shadow-sm"
+            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900/90 hover:bg-indigo-950/80 text-slate-200 hover:text-indigo-300 text-xs sm:text-sm font-bold rounded-xl border border-slate-700/80 hover:border-indigo-500/60 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-indigo-600/20 active:scale-95"
           >
             <Plus className="w-4 h-4 text-indigo-400" />
             <span>+ Create Availability Slot</span>
