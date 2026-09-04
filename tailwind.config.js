@@ -40,6 +40,7 @@ module.exports = {
       animation: {
         "fade-in": "fadeIn 0.2s ease-out forwards",
         "slide-left": "slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "slide-right": "slideRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         "pulse-subtle": "pulseSubtle 2s infinite ease-in-out",
       },
       keyframes: {
@@ -49,6 +50,10 @@ module.exports = {
         },
         slideLeft: {
           from: { opacity: "0", transform: "translateX(100%)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
+        slideRight: {
+          from: { opacity: "0", transform: "translateX(-100%)" },
           to: { opacity: "1", transform: "translateX(0)" },
         },
         pulseSubtle: {

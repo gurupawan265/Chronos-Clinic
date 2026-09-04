@@ -29,7 +29,7 @@ export default function Toast({
   const isSuccess = type === "success";
 
   return (
-    <div className="fixed top-20 right-4 sm:right-6 z-[100] max-w-sm w-full pointer-events-auto animate-slide-left">
+    <div className="fixed bottom-6 left-4 sm:left-6 z-[100] max-w-sm w-full pointer-events-auto animate-slide-right">
       <div
         className={`rounded-2xl p-4 border backdrop-blur-2xl shadow-2xl flex items-start justify-between gap-3.5 transition-all duration-300 ${
           isSuccess
