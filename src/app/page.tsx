@@ -11,6 +11,7 @@ import AppointmentDetailDrawer from "../components/AppointmentDetailDrawer";
 import AppointmentsDirectory from "../components/AppointmentsDirectory";
 import BulkAvailabilityGenerator from "../components/BulkAvailabilityGenerator";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
+import Toast from "../components/Toast";
 import {
   BookSlotModal,
   CreateSlotModal,
@@ -317,40 +318,19 @@ export default function HomePage() {
       {/* Clinic Top Navigation */}
       <Navbar user={session.user} />
 
+      {/* Top-Right Floating Toast Notifications */}
+      <Toast
+        message={actionSuccess}
+        type="success"
+        onClose={() => setActionSuccess(null)}
+      />
+      <Toast
+        message={actionError}
+        type="error"
+        onClose={() => setActionError(null)}
+      />
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        {/* Flash Toast Notifications */}
-        {actionError && (
-          <div className="mb-5 p-4 rounded-xl bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs flex items-center justify-between shadow-lg shadow-rose-950/40 animate-fade-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-              <span>
-                <strong>Server Notice:</strong> {actionError}
-              </span>
-            </div>
-            <button
-              onClick={() => setActionError(null)}
-              className="p-1 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {actionSuccess && (
-          <div className="mb-5 p-4 rounded-xl bg-emerald-950/80 border border-emerald-800/80 text-emerald-200 text-xs flex items-center justify-between shadow-lg shadow-emerald-950/40 animate-fade-in">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>{actionSuccess}</span>
-            </div>
-            <button
-              onClick={() => setActionSuccess(null)}
-              className="p-1 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
         {/* 1. Urgency-Sorted Dismissible Alerts Banner */}
         {alertsData && alertsData.alerts.length > 0 && (
           <AlertsBanner
