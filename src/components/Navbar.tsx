@@ -31,8 +31,13 @@ export default function Navbar({ user }: NavbarProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo & Brand */}
         <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-600/30 group-hover:scale-105 group-hover:shadow-indigo-500/50 transition-all">
-            +
+          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-900 border border-slate-700/60 flex items-center justify-center shadow-lg shadow-indigo-600/25 group-hover:scale-105 group-hover:border-indigo-500/60 transition-all flex-shrink-0">
+            <img
+              src="/logo.png"
+              alt="Chronos Clinic Logo"
+              className="w-full h-full object-contain"
+              style={{ transform: "scale(1.2)" }}
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">

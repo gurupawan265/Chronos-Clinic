@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: "Chronos Clinic — Multi-Provider Appointment Scheduling",
   description:
     "Integrated clinical scheduling system for front-desk coordination, provider agenda tracking, and proactive alert monitoring.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

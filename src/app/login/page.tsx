@@ -45,8 +45,13 @@ export default function LoginPage() {
       <div className="glass-panel w-full max-w-md rounded-3xl p-8 border border-slate-800 shadow-2xl space-y-6 animate-fade-in relative overflow-hidden">
         {/* Top Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 text-white font-black text-2xl items-center justify-center shadow-lg shadow-indigo-600/30 mb-2">
-            +
+          <div className="inline-flex w-16 h-16 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/60 items-center justify-center shadow-lg shadow-indigo-600/30 mb-2">
+            <img
+              src="/logo.png"
+              alt="Chronos Clinic Logo"
+              className="w-full h-full object-contain"
+              style={{ transform: "scale(1.2)" }}
+            />
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
             Chronos Clinic
