@@ -50,6 +50,31 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const isProd = process.env.NODE_ENV === "production";
+      const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+      const effectiveBaseUrl =
+        isProd && vercelUrl && baseUrl.includes("localhost")
+          ? vercelUrl
+          : baseUrl;
+
+      if (url.startsWith("/")) {
+        return `${effectiveBaseUrl.replace(/\/+$/, "")}${url}`;
+      }
+      try {
+        const parsedUrl = new URL(url);
+        if (
+          isProd &&
+          (parsedUrl.hostname === "localhost" || parsedUrl.hostname === "127.0.0.1") &&
+          vercelUrl
+        ) {
+          return `${vercelUrl}${parsedUrl.pathname}${parsedUrl.search}`;
+        }
+        return url;
+      } catch {
+        return effectiveBaseUrl;
+      }
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

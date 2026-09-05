@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { signOut } from "next-auth/react";
 import { LogOut, Sparkles, Shield, Stethoscope } from "lucide-react";
 
@@ -25,6 +25,7 @@ function getInitials(name?: string | null): string {
 
 export default function Navbar({ user }: NavbarProps) {
   const isFrontDesk = user?.role === "FRONT_DESK";
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 shadow-md">
@@ -58,12 +59,12 @@ export default function Navbar({ user }: NavbarProps) {
         {user && (
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition-all">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-slate-800 to-slate-700 border border-slate-600/50 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-bold text-indigo-300 shadow-inner">
                 {getInitials(user.name)}
               </div>
-              <div className="hidden md:block text-left">
-                <div className="text-xs font-bold text-white leading-tight">
-                  {user.name}
+              <div className="text-left">
+                <div className="text-xs font-bold text-slate-200 leading-tight">
+                  {user.name || "Clinic Staff"}
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span
@@ -81,12 +82,21 @@ export default function Navbar({ user }: NavbarProps) {
 
             {/* Red Sign Out Button with rich hover effects */}
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 hover:border-rose-500 text-xs font-bold transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-lg hover:shadow-rose-600/25 active:scale-95 group"
+              disabled={isSigningOut}
+              onClick={async () => {
+                setIsSigningOut(true);
+                try {
+                  await signOut({ redirect: false });
+                } catch {
+                  // ignore
+                }
+                window.location.href = "/login";
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 hover:border-rose-500 text-xs font-bold transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-lg hover:shadow-rose-600/25 active:scale-95 group disabled:opacity-60"
               title="Sign Out from Clinic Portal"
             >
               <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:text-white transition-colors" />
-              <span>Sign Out</span>
+              <span>{isSigningOut ? "Signing Out..." : "Sign Out"}</span>
             </button>
           </div>
         )}
