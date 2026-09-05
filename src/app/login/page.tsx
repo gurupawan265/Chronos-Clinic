@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -9,15 +9,13 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  UserCheck,
-  Shield,
   Eye,
   EyeOff,
   CheckCircle2,
   UserPlus,
 } from "lucide-react";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams?.get("registered") === "true";
@@ -71,22 +69,28 @@ export default function LoginPage() {
               style={{ transform: "scale(1.2)" }}
             />
           </div>
+
           <h1 className="text-2xl font-black text-white tracking-tight">
             Chronos Clinic
           </h1>
+
           <p className="text-xs text-slate-400">
             Multi-Provider Scheduling & Clinical Coordination OS
           </p>
         </div>
 
-        {/* Success Banner if redirected from registration */}
+        {/* Success Banner */}
         {justRegistered && !error && (
           <div className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-800/80 text-emerald-200 text-xs flex items-center gap-2 animate-fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <span>Account created successfully! Please sign in with your credentials.</span>
+            <span>
+              Account created successfully! Please sign in with your
+              credentials.
+            </span>
           </div>
         )}
 
+        {/* Error Banner */}
         {error && (
           <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-800/80 text-rose-200 text-xs flex items-center gap-2 animate-shake">
             <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
@@ -94,13 +98,16 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* Login Form */}
         <form onSubmit={(e) => handleLogin(e)} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
               Email Address
             </label>
+
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+
               <input
                 type="email"
                 value={email}
@@ -116,8 +123,10 @@ export default function LoginPage() {
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
               Password
             </label>
+
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
@@ -126,12 +135,17 @@ export default function LoginPage() {
                 required
                 className="w-full bg-slate-900/90 text-slate-200 text-xs pl-10 pr-9 py-2.5 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600 transition-all"
               />
+
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
               >
-                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showPassword ? (
+                  <EyeOff className="w-3.5 h-3.5" />
+                ) : (
+                  <Eye className="w-3.5 h-3.5" />
+                )}
               </button>
             </div>
           </div>
@@ -141,7 +155,10 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-2 cursor-pointer"
           >
-            <span>{loading ? "Signing in..." : "Sign In to Clinic Portal"}</span>
+            <span>
+              {loading ? "Signing in..." : "Sign In to Clinic Portal"}
+            </span>
+
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </form>
@@ -150,8 +167,12 @@ export default function LoginPage() {
         <div className="p-3 rounded-2xl bg-indigo-950/30 border border-indigo-900/40 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <UserPlus className="w-4 h-4 text-indigo-400" />
-            <span className="text-slate-300 text-[11px]">New staff or clinician?</span>
+
+            <span className="text-slate-300 text-[11px]">
+              New staff or clinician?
+            </span>
           </div>
+
           <Link
             href="/signup"
             className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold rounded-lg text-[11px] transition-all"
@@ -165,14 +186,19 @@ export default function LoginPage() {
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">
             One-Click Demo Access (Password: password123)
           </p>
+
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => fillAndLogin("alex.frontdesk@clinic.com")}
               className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
             >
-              <div className="text-[11px] font-bold text-white">Alex (Front Desk)</div>
-              <div className="text-[9px] text-slate-400">All providers schedule</div>
+              <div className="text-[11px] font-bold text-white">
+                Alex (Front Desk)
+              </div>
+              <div className="text-[9px] text-slate-400">
+                All providers schedule
+              </div>
             </button>
 
             <button
@@ -180,8 +206,12 @@ export default function LoginPage() {
               onClick={() => fillAndLogin("jordan.frontdesk@clinic.com")}
               className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
             >
-              <div className="text-[11px] font-bold text-white">Jordan (Front Desk)</div>
-              <div className="text-[9px] text-slate-400">Coordinator access</div>
+              <div className="text-[11px] font-bold text-white">
+                Jordan (Front Desk)
+              </div>
+              <div className="text-[9px] text-slate-400">
+                Coordinator access
+              </div>
             </button>
 
             <button
@@ -189,8 +219,12 @@ export default function LoginPage() {
               onClick={() => fillAndLogin("dr.smith@clinic.com")}
               className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
             >
-              <div className="text-[11px] font-bold text-white">Dr. Smith</div>
-              <div className="text-[9px] text-cyan-400">Physical Therapy</div>
+              <div className="text-[11px] font-bold text-white">
+                Dr. Smith
+              </div>
+              <div className="text-[9px] text-cyan-400">
+                Physical Therapy
+              </div>
             </button>
 
             <button
@@ -198,13 +232,25 @@ export default function LoginPage() {
               onClick={() => fillAndLogin("dr.jones@clinic.com")}
               className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
             >
-              <div className="text-[11px] font-bold text-white">Dr. Jones</div>
-              <div className="text-[9px] text-cyan-400">Sports Medicine</div>
+              <div className="text-[11px] font-bold text-white">
+                Dr. Jones
+              </div>
+              <div className="text-[9px] text-cyan-400">
+                Sports Medicine
+              </div>
             </button>
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   );
 }
 
