@@ -531,88 +531,106 @@ export default function HomePage() {
           MODALS
           ========================================================================= */}
       {/* 1. Book Slot Modal */}
-      <BookSlotModal
-        slot={bookingSlot}
-        isOpen={!!bookingSlot}
-        onClose={() => setBookingSlot(null)}
-        onBook={(slotId, patientName, patientContact) =>
-          bookSlotMutation.mutate({ slotId, patientName, patientContact })
-        }
-        isLoading={bookSlotMutation.isLoading}
-      />
+      {bookingSlot && (
+        <BookSlotModal
+          key={bookingSlot.id}
+          slot={bookingSlot}
+          isOpen={!!bookingSlot}
+          onClose={() => setBookingSlot(null)}
+          onBook={(slotId, patientName, patientContact) =>
+            bookSlotMutation.mutate({ slotId, patientName, patientContact })
+          }
+          isLoading={bookSlotMutation.isLoading}
+        />
+      )}
 
       {/* 2. Create Availability Slot Modal */}
-      <CreateSlotModal
-        isOpen={showCreateSlotModal}
-        onClose={() => setShowCreateSlotModal(false)}
-        providers={providers}
-        isFrontDesk={isFrontDesk}
-        currentUserId={session.user.id}
-        defaultProviderId={createSlotPrefill.providerId}
-        defaultDate={selectedScheduleDate}
-        defaultTime={createSlotPrefill.time}
-        onCreateSlot={(data) => createSlotMutation.mutate(data)}
-        isLoading={createSlotMutation.isLoading}
-      />
+      {showCreateSlotModal && (
+        <CreateSlotModal
+          key={`${createSlotPrefill.providerId || ""}_${createSlotPrefill.time || ""}_${selectedScheduleDate}`}
+          isOpen={showCreateSlotModal}
+          onClose={() => setShowCreateSlotModal(false)}
+          providers={providers}
+          isFrontDesk={isFrontDesk}
+          currentUserId={session.user.id}
+          defaultProviderId={createSlotPrefill.providerId}
+          defaultDate={selectedScheduleDate}
+          defaultTime={createSlotPrefill.time}
+          onCreateSlot={(data) => createSlotMutation.mutate(data)}
+          isLoading={createSlotMutation.isLoading}
+        />
+      )}
 
       {/* 3. Edit Slot Modal */}
-      <EditSlotModal
-        slot={editingSlot}
-        isOpen={!!editingSlot}
-        onClose={() => setEditingSlot(null)}
-        onSave={(data) =>
-          updateSlotMutation.mutate({
-            id: data.slotId,
-            date: data.date,
-            startTime: data.startTime,
-            durationMinutes: data.durationMinutes,
-          })
-        }
-        isLoading={updateSlotMutation.isLoading}
-      />
+      {editingSlot && (
+        <EditSlotModal
+          key={editingSlot.id}
+          slot={editingSlot}
+          isOpen={!!editingSlot}
+          onClose={() => setEditingSlot(null)}
+          onSave={(data) =>
+            updateSlotMutation.mutate({
+              id: data.slotId,
+              date: data.date,
+              startTime: data.startTime,
+              durationMinutes: data.durationMinutes,
+            })
+          }
+          isLoading={updateSlotMutation.isLoading}
+        />
+      )}
 
       {/* 4. Edit Patient Details Modal */}
-      <EditPatientModal
-        appointment={editingPatientAppt}
-        isOpen={!!editingPatientAppt}
-        onClose={() => setEditingPatientAppt(null)}
-        onSave={(id, name, contact) =>
-          updatePatientDetailsMutation.mutate({
-            appointmentId: id,
-            patientName: name,
-            patientContact: contact,
-          })
-        }
-        isLoading={updatePatientDetailsMutation.isLoading}
-      />
+      {editingPatientAppt && (
+        <EditPatientModal
+          key={editingPatientAppt.id}
+          appointment={editingPatientAppt}
+          isOpen={!!editingPatientAppt}
+          onClose={() => setEditingPatientAppt(null)}
+          onSave={(id, name, contact) =>
+            updatePatientDetailsMutation.mutate({
+              appointmentId: id,
+              patientName: name,
+              patientContact: contact,
+            })
+          }
+          isLoading={updatePatientDetailsMutation.isLoading}
+        />
+      )}
 
       {/* 5. Reassign Provider Modal */}
-      <ReassignProviderModal
-        appointment={reassigningAppt}
-        isOpen={!!reassigningAppt}
-        onClose={() => setReassigningAppt(null)}
-        providers={providers}
-        onReassign={(id, newProviderId) =>
-          reassignMutation.mutate({ appointmentId: id, newProviderId })
-        }
-        isLoading={reassignMutation.isLoading}
-      />
+      {reassigningAppt && (
+        <ReassignProviderModal
+          key={reassigningAppt.id}
+          appointment={reassigningAppt}
+          isOpen={!!reassigningAppt}
+          onClose={() => setReassigningAppt(null)}
+          providers={providers}
+          onReassign={(id, newProviderId) =>
+            reassignMutation.mutate({ appointmentId: id, newProviderId })
+          }
+          isLoading={reassignMutation.isLoading}
+        />
+      )}
 
       {/* 6. Cancel Appointment Modal (with Mandatory Reason) */}
-      <CancelAppointmentModal
-        appointment={cancellingAppt}
-        isOpen={!!cancellingAppt}
-        onClose={() => setCancellingAppt(null)}
-        onCancel={(id, reason) => {
-          updateStatusMutation.mutate(
-            { appointmentId: id, toStatus: "CANCELLED", cancellationReason: reason },
-            {
-              onSuccess: () => setCancellingAppt(null),
-            }
-          );
-        }}
-        isLoading={updateStatusMutation.isLoading}
-      />
+      {cancellingAppt && (
+        <CancelAppointmentModal
+          key={cancellingAppt.id}
+          appointment={cancellingAppt}
+          isOpen={!!cancellingAppt}
+          onClose={() => setCancellingAppt(null)}
+          onCancel={(id, reason) => {
+            updateStatusMutation.mutate(
+              { appointmentId: id, toStatus: "CANCELLED", cancellationReason: reason },
+              {
+                onSuccess: () => setCancellingAppt(null),
+              }
+            );
+          }}
+          isLoading={updateStatusMutation.isLoading}
+        />
+      )}
     </div>
   );
 }

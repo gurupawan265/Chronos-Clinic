@@ -7,7 +7,7 @@ async function runSignUpVerification() {
   console.log("VERIFYING SIGN UP & REGISTRATION IN DATABASE");
   console.log("==================================================");
 
-  const caller = appRouter.createCaller({ prisma, session: null });
+  const caller = appRouter.createCaller({ prisma, session: null, headers: undefined });
   const testEmailFD = `test.frontdesk.${Date.now()}@clinic.com`;
   const testEmailDoc = `test.doctor.${Date.now()}@clinic.com`;
 

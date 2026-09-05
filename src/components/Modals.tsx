@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { X, Calendar, Clock, User, Phone, AlertTriangle } from "lucide-react";
 import { Slot } from "./DayScheduleGrid";
@@ -23,6 +23,13 @@ export function BookSlotModal({
 }: BookSlotModalProps) {
   const [patientName, setPatientName] = useState("");
   const [patientContact, setPatientContact] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setPatientName("");
+      setPatientContact("");
+    }
+  }, [isOpen]);
 
   if (!isOpen || !slot) return null;
 
@@ -151,6 +158,26 @@ export function CreateSlotModal({
   const [date, setDate] = useState(defaultDate || format(new Date(), "yyyy-MM-dd"));
   const [startTime, setStartTime] = useState(defaultTime || "09:00");
   const [duration, setDuration] = useState(30);
+
+  useEffect(() => {
+    if (isOpen) {
+      setProviderId(
+        defaultProviderId ||
+          (isFrontDesk ? providers[0]?.id || "" : currentUserId || "")
+      );
+      setDate(defaultDate || format(new Date(), "yyyy-MM-dd"));
+      setStartTime(defaultTime || "09:00");
+      setDuration(30);
+    }
+  }, [
+    isOpen,
+    defaultProviderId,
+    defaultDate,
+    defaultTime,
+    isFrontDesk,
+    providers,
+    currentUserId,
+  ]);
 
   if (!isOpen) return null;
 
@@ -295,6 +322,14 @@ export function EditSlotModal({
   const [startTime, setStartTime] = useState(slot?.startTime || "09:00");
   const [duration, setDuration] = useState(slot?.durationMinutes || 30);
 
+  useEffect(() => {
+    if (isOpen && slot) {
+      setDate(format(new Date(slot.date), "yyyy-MM-dd"));
+      setStartTime(slot.startTime || "09:00");
+      setDuration(slot.durationMinutes || 30);
+    }
+  }, [isOpen, slot]);
+
   if (!isOpen || !slot) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -411,6 +446,13 @@ export function EditPatientModal({
   const [name, setName] = useState(appointment?.patientName || "");
   const [contact, setContact] = useState(appointment?.patientContact || "");
 
+  useEffect(() => {
+    if (isOpen && appointment) {
+      setName(appointment.patientName || "");
+      setContact(appointment.patientContact || "");
+    }
+  }, [isOpen, appointment]);
+
   if (!isOpen || !appointment) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -504,6 +546,12 @@ export function ReassignProviderModal({
   isLoading = false,
 }: ReassignProviderModalProps) {
   const [newProviderId, setNewProviderId] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setNewProviderId("");
+    }
+  }, [isOpen]);
 
   if (!isOpen || !appointment) return null;
 
@@ -605,6 +653,13 @@ export function CancelAppointmentModal({
 }: CancelAppointmentModalProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setReason("");
+      setError(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !appointment) return null;
 
