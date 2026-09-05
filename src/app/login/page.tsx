@@ -187,7 +187,7 @@ function LoginContent() {
             One-Click Demo Access (Password: password123)
           </p>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => fillAndLogin("alex.frontdesk@clinic.com")}
@@ -216,6 +216,19 @@ function LoginContent() {
 
             <button
               type="button"
+              onClick={() => fillAndLogin("dr.patel@clinic.com")}
+              className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
+            >
+              <div className="text-[11px] font-bold text-white">
+                Dr. Anita Patel
+              </div>
+              <div className="text-[9px] text-cyan-400">
+                Rehabilitation
+              </div>
+            </button>
+
+            <button
+              type="button"
               onClick={() => fillAndLogin("dr.smith@clinic.com")}
               className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
             >
@@ -237,6 +250,19 @@ function LoginContent() {
               </div>
               <div className="text-[9px] text-cyan-400">
                 Sports Medicine
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fillAndLogin("dr.lee@clinic.com")}
+              className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-850 text-left border border-slate-800 hover:border-indigo-500/50 transition-all"
+            >
+              <div className="text-[11px] font-bold text-white">
+                Dr. Michael Lee
+              </div>
+              <div className="text-[9px] text-cyan-400">
+                Orthopedics
               </div>
             </button>
           </div>
